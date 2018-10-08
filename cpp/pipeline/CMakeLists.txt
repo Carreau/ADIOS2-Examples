@@ -17,7 +17,7 @@ project(ADIOS2StageInMiniapp)
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
   set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
 else()
-  set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/cpp/stagein)
+  set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/cpp/pipeline)
 endif()
 file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/config
   DESTINATION ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}
@@ -32,6 +32,5 @@ find_package(MPI REQUIRED)
 # Workaround for various MPI implementations forcing the link of C++ bindings
 add_definitions(-DOMPI_SKIP_MPICXX -DMPICH_SKIP_MPICXX)
 
-add_subdirectory(datagenerator)
-#add_subdirectory(stageinapp)
-#add_subdirectory(simulation)
+add_executable(adios_pipeline settings.cpp decomp.cpp processConfig.cpp pipeline.cpp)
+target_link_libraries(adios_pipeline adios2::adios2 MPI::MPI_C)

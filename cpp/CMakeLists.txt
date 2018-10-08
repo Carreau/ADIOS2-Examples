@@ -1,2 +1,2 @@
 add_subdirectory(heat)
-add_subdirectory(stagein)
+add_subdirectory(pipeline)
