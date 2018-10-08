@@ -1,0 +1,11 @@
+
+# item  type    varname     N   [gdim1 gdim2 ... gdimN  decomp1 decomp2 ... decompN]
+
+array   double  a           2    100   200              X       Y
+array   float   b           1    100                    XY 
+array   float   c           3    100   200   300        XY      z     1
+
+# Specify the number of output steps and the sleep time between steps in seconds
+steps   3
+sleep   2
+

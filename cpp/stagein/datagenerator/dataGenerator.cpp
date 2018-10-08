@@ -4,12 +4,15 @@
 #include <fstream>
 #include <iostream>
 #include <iterator>
+#include <math.h>
 #include <sstream>
 #include <string>
 #include <vector>
 
 #include "adios2.h"
 #include "mpi.h"
+
+#include "decomp.h"
 
 std::vector<std::string> FileToLines(std::ifstream &configfile)
 {
@@ -163,7 +166,7 @@ size_t processDecomp(std::string &word, std::string decompID)
     std::transform(w.begin(), w.end(), w.begin(), ::toupper);
     for (size_t i = 0; i < word.size(); i++)
     {
-        char c = word[i];
+        char c = w[i];
         if (c == 'X')
         {
             decomp *= X;
@@ -184,12 +187,16 @@ size_t processDecomp(std::string &word, std::string decompID)
         {
             decomp *= W;
         }
+        else if (c == '1')
+        {
+            decomp *= 1;
+        }
         else
         {
             throw std::invalid_argument(
                 "Invalid identifier '" + std::string(1, c) + "' for " +
                 decompID + " in character position " + std::to_string(i + 1) +
-                ". Only accepted characters are XYZVW");
+                ". Only accepted characters are XYZVW and 1");
         }
     }
     return decomp;
@@ -262,8 +269,6 @@ OutputVariable processArray(std::vector<std::string> &words)
 
 void defineADIOSArray(adios2::IO &io, OutputVariable &ov)
 {
-    std::cout << "Define Variable '" << ov.name << "' with type " << ov.type
-              << std::endl;
     if (ov.type == "double")
     {
         adios2::Variable<double> v = io.DefineVariable<double>(
@@ -372,25 +377,21 @@ Config processConfig(adios2::IO &io, bool verbose)
                 // process config line and get global array info
                 OutputVariable ov = processArray(words);
                 ov.datasize = ov.elemsize;
-                size_t pos[5] = {0, 0, 0, 0, 0}; // Position of rank in 5D space
+                size_t pos[ov.ndim]; // Position of rank in 5D space
 
-                // FIXME: Calculate rank's position in 5D space
-                pos[0] = myRank % X;
-                pos[1] = myRank / X;
-                pos[2] = 0;
-                pos[3] = 0;
-                pos[4] = 0;
+                // Calculate rank's position in ndim-space
+                decompRowMajor(ov.ndim, myRank, ov.decomp.data(), pos);
 
                 // Calculate the local size and offsets based on the definition
                 for (size_t i = 0; i < ov.ndim; ++i)
                 {
                     size_t count = ov.shape[i] / ov.decomp[i];
                     size_t offs = count * pos[i];
-                    if (pos[i] == ov.decomp[i] - 1)
+                    if (pos[i] == ov.decomp[i] - 1 && pos[i] != 0)
                     {
                         // last process in dim(i) need to write all the rest of
                         // dimension
-                        count = ov.decomp[i] - count * (pos[i] - 1);
+                        count = ov.shape[i] - count * (pos[i] - 1);
                     }
                     ov.start.push_back(offs);
                     ov.count.push_back(count);
@@ -402,7 +403,6 @@ Config processConfig(adios2::IO &io, bool verbose)
 
                 // Define the ADIOS output variable
                 defineADIOSArray(io, ov);
-                fillArray(ov, static_cast<double>(myRank));
 
                 cfg.variables.push_back(ov);
                 if (verbose)
@@ -412,10 +412,22 @@ Config processConfig(adios2::IO &io, bool verbose)
                               << " elemsize = " << ov.elemsize << std::endl;
                 }
             }
+            else
+            {
+                throw std::invalid_argument("Unrecognized keyword '" + key +
+                                            "'.");
+            }
         }
     }
     configfile.close();
     return cfg;
+}
+
+static int ndigits(size_t n)
+{
+    /* Determine how many characters are needed to print n */
+    static char digitstr[32];
+    return snprintf(digitstr, 32, "%zu", n);
 }
 
 int main(int argc, char *argv[])
@@ -484,15 +496,28 @@ int main(int argc, char *argv[])
             }
         }
 
-        adios2::Variable<double> v =
+        /*adios2::Variable<double> v =
             outIO.InquireVariable<double>(cfg.variables[0].name);
         if (v)
         {
             std::cout << "Variable " << cfg.variables[0].name << " shape"
                       << v.Shape()[0] << "x" << v.Shape()[1] << std::endl;
-        }
+        }*/
         for (size_t step = 1; step < cfg.nSteps; ++step)
         {
+            double div =
+                pow(10.0, static_cast<double>(ndigits(cfg.nSteps - 1)));
+            double myValue = static_cast<double>(myRank) +
+                             static_cast<double>(step - 1) / div;
+            if (!myRank)
+            {
+                std::cout << "Fill arrays for step" << step << std::endl;
+            }
+
+            for (auto &ov : cfg.variables)
+            {
+                fillArray(ov, myValue);
+            }
             if (!myRank)
             {
                 std::cout << "Write step " << step << std::endl;

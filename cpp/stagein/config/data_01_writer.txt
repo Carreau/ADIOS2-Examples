@@ -17,8 +17,9 @@
 
 array   double  a           2    100   200              X       Y
 array   float   b           1    100                    XY 
-globalv int8     nproc
-localv  int     rank
+
+#globalv int8     nproc
+#localv  int     rank
 
 # Specify the number of output steps and the sleep time between steps in seconds
 steps   3
