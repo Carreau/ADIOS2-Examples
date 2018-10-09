@@ -88,41 +88,40 @@ void getADIOSArray(adios2::Engine &reader, adios2::IO &io, OutputVariable &ov)
         adios2::Variable<double> v = io.InquireVariable<double>(ov.name);
         if (!v)
         {
-            std::cout << "Variable " << ov.type << " " << ov.name
-                      << " is not available in the input" << std::endl;
+            ov.availableInInput = false;
+            return;
         }
+        v.SetSelection({ov.start, ov.count});
         double *a = reinterpret_cast<double *>(ov.data.data());
         reader.Get<double>(v, a);
+        ov.availableInInput = true;
     }
     else if (ov.type == "float")
     {
         adios2::Variable<float> v = io.InquireVariable<float>(ov.name);
         if (!v)
         {
-            std::cout << "Variable " << ov.type << " " << ov.name
-                      << " is not available in the input" << std::endl;
+            ov.availableInInput = false;
+            return;
         }
+        v.SetSelection({ov.start, ov.count});
         float *a = reinterpret_cast<float *>(ov.data.data());
         reader.Get<float>(v, a);
+        ov.availableInInput = true;
     }
     else if (ov.type == "int")
     {
         adios2::Variable<int> v = io.InquireVariable<int>(ov.name);
         if (!v)
         {
-            std::cout << "Variable " << ov.type << " " << ov.name
-                      << " is not available in the input" << std::endl;
+            ov.availableInInput = false;
+            return;
         }
+        v.SetSelection({ov.start, ov.count});
         int *a = reinterpret_cast<int *>(ov.data.data());
         reader.Get<int>(v, a);
+        ov.availableInInput = true;
     }
-}
-
-static int ndigits(size_t n)
-{
-    /* Determine how many characters are needed to print n */
-    static char digitstr[32];
-    return snprintf(digitstr, 32, "%zu", n);
 }
 
 void readADIOS(adios2::Engine &reader, adios2::IO &io, Config &cfg,
@@ -130,17 +129,17 @@ void readADIOS(adios2::Engine &reader, adios2::IO &io, Config &cfg,
 {
     reader.BeginStep();
 
-    if (!settings.myRank && settings.verbose)
+    if (!settings.myRank && settings.verbose && step == 1)
     {
         const auto varmap = io.AvailableVariables();
-        std::cout << "Variables in input for reading: " << std::endl;
+        std::cout << "    Variables in input for reading: " << std::endl;
         for (const auto &v : varmap)
         {
             std::cout << "        " << v.first << std::endl;
         }
     }
 
-    for (auto &ov : cfg.variables)
+    for (OutputVariable &ov : cfg.variables)
     {
         getADIOSArray(reader, io, ov);
     }
@@ -150,27 +149,30 @@ void readADIOS(adios2::Engine &reader, adios2::IO &io, Config &cfg,
 void writeADIOS(adios2::Engine &writer, Config &cfg, const Settings &settings,
                 size_t step)
 {
-    if (!settings.doRead)
-    {
-        double div = pow(10.0, static_cast<double>(ndigits(cfg.nSteps - 1)));
-        double myValue = static_cast<double>(settings.myRank) +
-                         static_cast<double>(step - 1) / div;
-        if (!settings.myRank && settings.verbose)
-        {
-            std::cout << "    Fill arrays for output" << std::endl;
-        }
+    const double div =
+        pow(10.0, static_cast<const double>(settings.ndigits(cfg.nSteps - 1)));
+    double myValue = static_cast<double>(settings.myRank) +
+                     static_cast<double>(step - 1) / div;
 
-        for (auto &ov : cfg.variables)
+    for (OutputVariable &ov : cfg.variables)
+    {
+        if (!ov.availableInInput)
         {
+            if (!settings.myRank && settings.verbose)
+            {
+                std::cout << "    Fill array  " << ov.name << "  for output"
+                          << std::endl;
+            }
             fillArray(ov, myValue);
         }
     }
+
     if (!settings.myRank && settings.verbose)
     {
         std::cout << "    Write data " << std::endl;
     }
     writer.BeginStep();
-    for (const auto &ov : cfg.variables)
+    for (const OutputVariable &ov : cfg.variables)
     {
         putADIOSArray(writer, ov);
     }
@@ -226,7 +228,7 @@ int main(int argc, char *argv[])
             if (settings.doWrite)
             {
                 // Define the ADIOS output variables
-                for (const auto &ov : cfg.variables)
+                for (const OutputVariable &ov : cfg.variables)
                 {
                     defineADIOSArray(outIO, ov);
                 }
@@ -245,7 +247,7 @@ int main(int argc, char *argv[])
                 }
             }
 
-            for (size_t step = 1; step < cfg.nSteps; ++step)
+            for (size_t step = 1; step <= cfg.nSteps; ++step)
             {
                 if (!settings.myRank)
                 {

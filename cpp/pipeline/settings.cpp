@@ -25,13 +25,20 @@ struct option options[] = {{"help", no_argument, NULL, 'h'},
 
 static const char *optstring = "-hva:c:r:w:d:";
 
-Settings::Settings() {}
+size_t Settings::ndigits(size_t n) const
+{
+    /* Determine how many characters are needed to print n */
+    static char digitstr[32];
+    return static_cast<size_t>(snprintf(digitstr, 32, "%zu", n));
+}
 
 void Settings::displayHelp()
 {
     std::cout
-        << "Usage: pipeline -c config  [-r input ] [-w output]  -d d1 [d2 .. "
+        << "Usage: pipeline -a appid -c config  [-r input ] [-w output]  -d d1 "
+           "[d2 .. "
            "dN] \n"
+        << "  -a appID:  unique number for each pipeline application\n"
         << "  -c config: data specification config file\n"
         << "  -r input:  read data from input file/stream\n"
         << "  -w output: generate and write data to output file/stream\n"
@@ -43,7 +50,8 @@ void Settings::displayHelp()
         << "  -h         display this help\n\n";
 }
 
-size_t Settings::stringToNumber(const std::string &varName, const char *arg)
+size_t Settings::stringToNumber(const std::string &varName,
+                                const char *arg) const
 {
     char *end;
     size_t retval = static_cast<size_t>(std::strtoull(arg, &end, 10));

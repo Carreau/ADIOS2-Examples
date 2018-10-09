@@ -40,10 +40,12 @@ public:
     std::ifstream configFile;
     size_t nDecomp = 0;
 
-    Settings();
+    Settings() = default;
+    ~Settings() = default;
     int processArguments(int argc, char *argv[], MPI_Comm worldComm);
     int extraArgumentChecks();
-    size_t stringToNumber(const std::string &varName, const char *arg);
+    size_t stringToNumber(const std::string &varName, const char *arg) const;
+    size_t ndigits(size_t n) const;
 
 private:
     void displayHelp();

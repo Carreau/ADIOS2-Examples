@@ -63,6 +63,31 @@ size_t getNumber(std::vector<std::string> &words, int pos, std::string lineID)
     return n;
 }
 
+void PrintDims(const adios2::Dims &dims) noexcept
+{
+    std::cout << "{";
+    for (int i = 0; i < dims.size(); i++)
+    {
+        std::cout << dims[i];
+        if (i < dims.size() - 1)
+            std::cout << ",";
+    }
+    std::cout << "}";
+}
+
+std::string DimsToString(const adios2::Dims &dims) noexcept
+{
+    std::string s = "{";
+    for (int i = 0; i < dims.size(); i++)
+    {
+        s += std::to_string(dims[i]);
+        if (i < dims.size() - 1)
+            s += ",";
+    }
+    s += "}";
+    return s;
+}
+
 size_t processDecomp(std::string &word, const Settings &settings,
                      std::string decompID)
 {
@@ -134,6 +159,7 @@ OutputVariable processArray(std::vector<std::string> &words,
     ov.elemsize = getTypeSize(ov.type);
     ov.name = words[2];
     ov.ndim = getNumber(words, 3, "number of dimensions of array " + ov.name);
+    ov.availableInInput = false;
 
     if (words.size() < 4 + 2 * ov.ndim)
     {
@@ -180,6 +206,12 @@ Config processConfig(const Settings &settings)
         throw std::invalid_argument(settings.configFileName +
                                     " cannot be opened ");
     }
+    if (verbose0)
+    {
+        std::cout << "Process config file " << settings.configFileName
+                  << std::endl;
+    }
+
     Config cfg;
     std::vector<std::string> lines = FileToLines(configFile);
     for (auto &line : lines)
@@ -187,7 +219,8 @@ Config processConfig(const Settings &settings)
         ++cfg.currentConfigLineNumber;
         if (verbose0 > 1)
         {
-            std::cout << "        " << line << std::endl;
+            std::cout << "config " << cfg.currentConfigLineNumber << ": "
+                      << line << std::endl;
         }
         std::vector<std::string> words = LineToWords(line);
         if (!words.empty() && !isComment(words[0]))
@@ -199,7 +232,7 @@ Config processConfig(const Settings &settings)
                 cfg.nSteps = getNumber(words, 1, "steps");
                 if (verbose0)
                 {
-                    std::cout << "-> Steps is set to: " << cfg.nSteps
+                    std::cout << "--> Steps is set to: " << cfg.nSteps
                               << std::endl;
                 }
             }
@@ -208,7 +241,7 @@ Config processConfig(const Settings &settings)
                 cfg.sleepInSeconds = getNumber(words, 1, "sleep");
                 if (verbose0)
                 {
-                    std::cout << "-> Sleep is set to: " << cfg.sleepInSeconds
+                    std::cout << "--> Sleep is set to: " << cfg.sleepInSeconds
                               << " seconds" << std::endl;
                 }
             }
@@ -231,7 +264,7 @@ Config processConfig(const Settings &settings)
                     {
                         // last process in dim(i) need to write all the rest of
                         // dimension
-                        count = ov.shape[i] - count * (pos[i] - 1);
+                        count = ov.shape[i] - offs;
                     }
                     ov.start.push_back(offs);
                     ov.count.push_back(count);
@@ -242,9 +275,21 @@ Config processConfig(const Settings &settings)
                 ov.data.resize(ov.datasize);
 
                 cfg.variables.push_back(ov);
-                if (verbose0)
+                if (settings.verbose > 2)
                 {
-                    std::cout << "-> Variable array name = " << ov.name
+                    std::cout << "--> rank = " << settings.myRank
+                              << ": Variable array name = " << ov.name
+                              << " type = " << ov.type
+                              << " elemsize = " << ov.elemsize
+                              << " local datasize = " << ov.datasize
+                              << " shape = " << DimsToString(ov.shape)
+                              << " start = " << DimsToString(ov.start)
+                              << " count = " << DimsToString(ov.count)
+                              << std::endl;
+                }
+                else if (verbose0)
+                {
+                    std::cout << "--> Variable array name = " << ov.name
                               << " type = " << ov.type
                               << " elemsize = " << ov.elemsize << std::endl;
                 }

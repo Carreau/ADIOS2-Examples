@@ -28,6 +28,7 @@ struct OutputVariable
     size_t elemsize;
     size_t datasize;
     std::vector<char> data;
+    bool availableInInput;
 };
 
 struct Config
