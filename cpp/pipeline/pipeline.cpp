@@ -124,10 +124,15 @@ void getADIOSArray(adios2::Engine &reader, adios2::IO &io, OutputVariable &ov)
     }
 }
 
-void readADIOS(adios2::Engine &reader, adios2::IO &io, Config &cfg,
+/* return true if read-in completed */
+bool readADIOS(adios2::Engine &reader, adios2::IO &io, Config &cfg,
                const Settings &settings, size_t step)
 {
-    reader.BeginStep();
+    enum adios2::StepStatus status = reader.BeginStep();
+    if (status != adios2::StepStatus::OK)
+    {
+        return false;
+    }
 
     if (!settings.myRank && settings.verbose && step == 1)
     {
@@ -139,11 +144,17 @@ void readADIOS(adios2::Engine &reader, adios2::IO &io, Config &cfg,
         }
     }
 
+    if (!settings.myRank && settings.verbose)
+    {
+        std::cout << "    Read data " << std::endl;
+    }
+
     for (OutputVariable &ov : cfg.variables)
     {
         getADIOSArray(reader, io, ov);
     }
     reader.EndStep();
+    return true;
 }
 
 void writeADIOS(adios2::Engine &writer, Config &cfg, const Settings &settings,
@@ -247,19 +258,47 @@ int main(int argc, char *argv[])
                 }
             }
 
-            for (size_t step = 1; step <= cfg.nSteps; ++step)
+            if (settings.doRead)
             {
-                if (!settings.myRank)
+                /* Read as many steps as available and
+                   then write as many as well */
+                size_t step = 1;
+                bool cont = true;
+                while (cont)
                 {
-                    std::cout << "Step " << step << ": " << std::endl;
+                    if (!settings.myRank)
+                    {
+                        std::cout << "Step " << step << ": " << std::endl;
+                    }
+                    cont = readADIOS(reader, inIO, cfg, settings, step);
+                    if (cont)
+                    {
+                        if (settings.doWrite)
+                        {
+                            writeADIOS(writer, cfg, settings, step);
+                        }
+                        ++step;
+                    }
+                    else if (!settings.myRank)
+                    {
+                        std::cout << "    No more steps from input "
+                                  << std::endl;
+                    }
                 }
-                if (settings.doRead)
+            }
+            else
+            {
+                /* Write as many steps as specified in config file */
+                for (size_t step = 1; step <= cfg.nSteps; ++step)
                 {
-                    readADIOS(reader, inIO, cfg, settings, step);
-                }
-                if (settings.doWrite)
-                {
-                    writeADIOS(writer, cfg, settings, step);
+                    if (!settings.myRank)
+                    {
+                        std::cout << "Step " << step << ": " << std::endl;
+                    }
+                    if (settings.doWrite)
+                    {
+                        writeADIOS(writer, cfg, settings, step);
+                    }
                 }
             }
 
