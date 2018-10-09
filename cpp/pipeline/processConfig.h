@@ -33,8 +33,10 @@ struct OutputVariable
 
 struct Config
 {
-    size_t nSteps;
-    size_t sleepInSeconds;
+    size_t nSteps = 1;
+    size_t sleepBeforeIO_us = 0; // in microseconds
+    size_t sleepBetweenIandO_us = 0;
+    size_t sleepAfterIO_us = 0;
     std::vector<OutputVariable> variables;
     size_t currentConfigLineNumber = 0;
 };

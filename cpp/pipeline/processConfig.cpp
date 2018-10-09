@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <errno.h>
+#include <iomanip>
 #include <iostream>
 #include <iterator>
 #include <sstream>
@@ -43,7 +44,8 @@ bool isComment(std::string &s)
     return comment;
 }
 
-size_t getNumber(std::vector<std::string> &words, int pos, std::string lineID)
+size_t stringToSizet(std::vector<std::string> &words, int pos,
+                     std::string lineID)
 {
     if (words.size() < pos + 1)
     {
@@ -54,6 +56,7 @@ size_t getNumber(std::vector<std::string> &words, int pos, std::string lineID)
     }
 
     char *end;
+    errno = 0;
     size_t n = static_cast<size_t>(std::strtoull(words[pos].c_str(), &end, 10));
     if (end[0] || errno == ERANGE)
     {
@@ -61,6 +64,28 @@ size_t getNumber(std::vector<std::string> &words, int pos, std::string lineID)
                                     words[pos]);
     }
     return n;
+}
+
+double stringToDouble(std::vector<std::string> &words, int pos,
+                      std::string lineID)
+{
+    if (words.size() < pos + 1)
+    {
+        throw std::invalid_argument(
+            "Line for " + lineID +
+            " is invalid. Missing floating point value at word position " +
+            std::to_string(pos + 1));
+    }
+
+    char *end;
+    errno = 0;
+    double d = static_cast<double>(std::strtod(words[pos].c_str(), &end));
+    if (end[0] || errno == ERANGE)
+    {
+        throw std::invalid_argument("Invalid floating point value given for " +
+                                    lineID + ": " + words[pos]);
+    }
+    return d;
 }
 
 void PrintDims(const adios2::Dims &dims) noexcept
@@ -158,7 +183,8 @@ OutputVariable processArray(std::vector<std::string> &words,
     ov.type = words[1];
     ov.elemsize = getTypeSize(ov.type);
     ov.name = words[2];
-    ov.ndim = getNumber(words, 3, "number of dimensions of array " + ov.name);
+    ov.ndim =
+        stringToSizet(words, 3, "number of dimensions of array " + ov.name);
     ov.availableInInput = false;
 
     if (words.size() < 4 + 2 * ov.ndim)
@@ -173,7 +199,7 @@ OutputVariable processArray(std::vector<std::string> &words,
     for (size_t i = 0; i < ov.ndim; i++)
     {
         ov.shape.push_back(
-            getNumber(words, 4 + i, "dimension " + std::to_string(i + 1)));
+            stringToSizet(words, 4 + i, "dimension " + std::to_string(i + 1)));
     }
 
     size_t nprocDecomp = 1;
@@ -194,6 +220,59 @@ OutputVariable processArray(std::vector<std::string> &words,
             std::to_string(settings.nProc) + ")");
     }
     return ov;
+}
+
+void processSleep(std::vector<std::string> &words, const Settings &settings,
+                  Config &cfg, unsigned int verbose)
+{
+    if (words.size() < 3)
+    {
+        throw std::invalid_argument(
+            "Line for Sleep definition is invalid. The format is \n"
+            "sleep   [before|between|after]  duration\n"
+            "duration is a floating point number and is interpreted as "
+            "seconds.");
+    }
+
+    double d = stringToDouble(words, 2, "sleep duration");
+
+    std::string w(words[1]);
+    std::transform(w.begin(), w.end(), w.begin(), ::tolower);
+    if (w == "before")
+    {
+        cfg.sleepBeforeIO_us = static_cast<size_t>(d * 1000000);
+        if (verbose)
+        {
+            std::cout << "--> Sleep Before IO set to: " << std::setprecision(7)
+                      << d << " seconds" << std::endl;
+        }
+    }
+    else if (w == "between")
+    {
+        cfg.sleepBetweenIandO_us = static_cast<size_t>(d * 1000000);
+        if (verbose)
+        {
+            std::cout << "--> Sleep Between I and O set to: "
+                      << std::setprecision(7) << d << " seconds" << std::endl;
+        }
+    }
+    else if (w == "after")
+    {
+        cfg.sleepAfterIO_us = static_cast<size_t>(d * 1000000);
+        if (verbose)
+        {
+            std::cout << "--> Sleep After IO set to: " << std::setprecision(7)
+                      << d << " seconds" << std::endl;
+        }
+    }
+    else
+    {
+        throw std::invalid_argument(
+            "Line for Sleep definition is invalid. The format is \n"
+            "sleep   [before|between|after]  duration\n"
+            "duration is a floating point number and is interpreted as "
+            "seconds.");
+    }
 }
 
 Config processConfig(const Settings &settings)
@@ -229,7 +308,7 @@ Config processConfig(const Settings &settings)
             std::transform(key.begin(), key.end(), key.begin(), ::tolower);
             if (key == "steps")
             {
-                cfg.nSteps = getNumber(words, 1, "steps");
+                cfg.nSteps = stringToSizet(words, 1, "steps");
                 if (verbose0)
                 {
                     std::cout << "--> Steps is set to: " << cfg.nSteps
@@ -238,12 +317,7 @@ Config processConfig(const Settings &settings)
             }
             else if (key == "sleep")
             {
-                cfg.sleepInSeconds = getNumber(words, 1, "sleep");
-                if (verbose0)
-                {
-                    std::cout << "--> Sleep is set to: " << cfg.sleepInSeconds
-                              << " seconds" << std::endl;
-                }
+                processSleep(words, settings, cfg, verbose0);
             }
             else if (key == "array")
             {

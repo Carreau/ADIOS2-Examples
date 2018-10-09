@@ -1,8 +1,9 @@
-
+#include <chrono>
 #include <cstdlib>
 #include <iostream>
 #include <math.h>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "adios2.h"
@@ -270,13 +271,21 @@ int main(int argc, char *argv[])
                     {
                         std::cout << "Step " << step << ": " << std::endl;
                     }
+                    std::this_thread::sleep_for(
+                        std::chrono::microseconds(cfg.sleepBeforeIO_us));
+
                     cont = readADIOS(reader, inIO, cfg, settings, step);
+
                     if (cont)
                     {
+                        std::this_thread::sleep_for(std::chrono::microseconds(
+                            cfg.sleepBetweenIandO_us));
                         if (settings.doWrite)
                         {
                             writeADIOS(writer, cfg, settings, step);
                         }
+                        std::this_thread::sleep_for(
+                            std::chrono::microseconds(cfg.sleepAfterIO_us));
                         ++step;
                     }
                     else if (!settings.myRank)
@@ -286,7 +295,7 @@ int main(int argc, char *argv[])
                     }
                 }
             }
-            else
+            else if (settings.doWrite)
             {
                 /* Write as many steps as specified in config file */
                 for (size_t step = 1; step <= cfg.nSteps; ++step)
@@ -295,10 +304,14 @@ int main(int argc, char *argv[])
                     {
                         std::cout << "Step " << step << ": " << std::endl;
                     }
-                    if (settings.doWrite)
-                    {
-                        writeADIOS(writer, cfg, settings, step);
-                    }
+
+                    std::this_thread::sleep_for(std::chrono::microseconds(
+                        cfg.sleepBeforeIO_us + cfg.sleepBetweenIandO_us));
+
+                    writeADIOS(writer, cfg, settings, step);
+
+                    std::this_thread::sleep_for(
+                        std::chrono::microseconds(cfg.sleepAfterIO_us));
                 }
             }
 
