@@ -169,8 +169,8 @@ size_t getTypeSize(std::string &type)
     throw std::invalid_argument("Type '" + type + "' is invalid. ");
 }
 
-OutputVariable processArray(std::vector<std::string> &words,
-                            const Settings &settings)
+VariableInfo processArray(std::vector<std::string> &words,
+                          const Settings &settings)
 {
     if (words.size() < 4)
     {
@@ -178,14 +178,14 @@ OutputVariable processArray(std::vector<std::string> &words,
                                     "There must be at least 4 words "
                                     "in the line (array type name ndim)");
     }
-    OutputVariable ov;
+    VariableInfo ov;
     ov.shapeID = adios2::ShapeID::GlobalArray;
     ov.type = words[1];
     ov.elemsize = getTypeSize(ov.type);
     ov.name = words[2];
     ov.ndim =
         stringToSizet(words, 3, "number of dimensions of array " + ov.name);
-    ov.availableInInput = false;
+    ov.readFromInput = false;
 
     if (words.size() < 4 + 2 * ov.ndim)
     {
@@ -222,6 +222,7 @@ OutputVariable processArray(std::vector<std::string> &words,
     return ov;
 }
 
+/*
 void processSleep(std::vector<std::string> &words, const Settings &settings,
                   Config &cfg, unsigned int verbose)
 {
@@ -274,6 +275,84 @@ void processSleep(std::vector<std::string> &words, const Settings &settings,
             "seconds.");
     }
 }
+*/
+
+void printConfig(const Config &cfg)
+{
+    std::cout << "\nConfig: \n"
+              << "    nSteps    =  " << cfg.nSteps
+              << "    nGroups   = " << cfg.groupVariablesMap.size()
+              << "    nCommands = " << cfg.commands.size() << std::endl;
+    for (const auto &mapIt : cfg.groupVariablesMap)
+    {
+        std::cout << "    Group " << mapIt.first << ":" << std::endl;
+        for (const auto &vi : mapIt.second)
+        {
+            std::cout << "        " << vi.type << "  " << vi.name
+                      << DimsToString(vi.shape) << "  decomposed as "
+                      << DimsToString(vi.decomp) << std::endl;
+        }
+        std::cout << std::endl;
+    }
+
+    std::cout << "    Commands :" << std::endl;
+    for (const auto cmd : cfg.commands)
+    {
+        switch (cmd->op)
+        {
+        case Operation::Sleep:
+        {
+            auto cmdS = dynamic_cast<const CommandSleep *>(cmd.get());
+            std::cout << "        Sleep for " << cmdS->sleepTime_us
+                      << " microseconds " << std::endl;
+            break;
+        }
+        case Operation::Write:
+        {
+            auto cmdW = dynamic_cast<CommandWrite *>(cmd.get());
+            std::cout << "        Write to output " << cmdW->streamName
+                      << " the group " << cmdW->groupName;
+            if (!cmdW->variables.empty())
+            {
+                std::cout << " with selected variables:  ";
+                for (const auto &v : cmdW->variables)
+                {
+                    std::cout << v << " ";
+                }
+            }
+            std::cout << std::endl;
+            break;
+        }
+        case Operation::Read:
+        {
+            auto cmdR = dynamic_cast<CommandRead *>(cmd.get());
+            std::cout << "        Read ";
+            if (cmdR->stepMode == adios2::StepMode::NextAvailable)
+            {
+                std::cout << "next available step from ";
+            }
+            else
+            {
+                std::cout << "latest step from ";
+            }
+
+            std::cout << cmdR->streamName << " using the group "
+                      << cmdR->groupName;
+            if (!cmdR->variables.empty())
+            {
+                std::cout << " with selected variables:  ";
+                for (const auto &v : cmdR->variables)
+                {
+                    std::cout << v << " ";
+                }
+            }
+            std::cout << std::endl;
+            break;
+        }
+        }
+        std::cout << std::endl;
+    }
+}
 
 Config processConfig(const Settings &settings)
 {
@@ -292,9 +371,13 @@ Config processConfig(const Settings &settings)
     }
 
     Config cfg;
+    std::string currentGroup;
+    int currentAppId = -1;
+    std::vector<VariableInfo> *currentVariables = nullptr;
     std::vector<std::string> lines = FileToLines(configFile);
     for (auto &line : lines)
     {
+        std::string conditionalGroup;
         ++cfg.currentConfigLineNumber;
         if (verbose0 > 1)
         {
@@ -306,6 +389,60 @@ Config processConfig(const Settings &settings)
         {
             std::string key(words[0]);
             std::transform(key.begin(), key.end(), key.begin(), ::tolower);
+            if (key == "cond")
+            {
+                if (words.size() < 2)
+                {
+                    throw std::invalid_argument(
+                        "Line for 'cond' is invalid. "
+                        "Missing group name at word position "
+                        "2");
+                }
+                conditionalGroup = words[1];
+
+                if (words.size() < 3)
+                {
+                    throw std::invalid_argument(
+                        "Line for 'cond' is invalid. "
+                        "Missing command from word position "
+                        "3");
+                }
+                words.erase(words.begin(), words.begin() + 2);
+                key = words[0];
+                std::transform(key.begin(), key.end(), key.begin(), ::tolower);
+            }
+
+            if (key == "group")
+            {
+                if (words.size() < 2)
+                {
+                    throw std::invalid_argument("Line for group is invalid. "
+                                                "Missing name at word position "
+                                                "2");
+                }
+
+                currentGroup = words[1];
+                if (verbose0)
+                {
+                    std::cout << "--> New variable group: " << currentGroup
+                              << std::endl;
+                }
+                auto it = cfg.groupVariablesMap.emplace(
+                    currentGroup, std::initializer_list<VariableInfo>{});
+                // auto v = it.first->second;
+                currentVariables = &it.first->second;
+                // currentVariables = &cfg.variables[currentGroup];
+            }
+            if (key == "app")
+            {
+                currentAppId = static_cast<int>(stringToSizet(words, 1, "app"));
+                if (verbose0)
+                {
+                    std::cout
+                        << "--> Application ID is set to: " << currentAppId
+                        << std::endl;
+                }
+            }
             if (key == "steps")
             {
                 cfg.nSteps = stringToSizet(words, 1, "steps");
@@ -315,14 +452,108 @@ Config processConfig(const Settings &settings)
                               << std::endl;
                 }
             }
-            else if (key == "sleep")
+            else if (key == "sleep" && currentAppId == settings.appId)
             {
-                processSleep(words, settings, cfg, verbose0);
+                size_t d = stringToDouble(words, 1, "sleep");
+                if (verbose0)
+                {
+                    std::cout
+                        << "--> Command Sleep for: " << std::setprecision(7)
+                        << d << " seconds" << std::endl;
+                }
+                size_t t_us = static_cast<size_t>(d * 1000000);
+                auto cmd = std::make_shared<CommandSleep>(t_us);
+                cfg.commands.push_back(cmd);
+            }
+            else if (key == "write" && currentAppId == settings.appId)
+            {
+                if (words.size() < 3)
+                {
+                    throw std::invalid_argument(
+                        "Line for 'write' is invalid. "
+                        "Need at least output name and group name ");
+                }
+                std::string fileName(words[1]);
+                std::string groupName(words[2]);
+                auto grpIt = cfg.groupVariablesMap.find(groupName);
+                if (grpIt == cfg.groupVariablesMap.end())
+                {
+                    throw std::invalid_argument(
+                        "Group '" + groupName +
+                        "' used in 'write' command is undefined. ");
+                }
+
+                if (verbose0)
+                {
+                    std::cout << "--> Command Write output = " << fileName
+                              << "  group = " << groupName << std::endl;
+                }
+                auto cmd = std::make_shared<CommandWrite>(fileName, groupName);
+                cfg.commands.push_back(cmd);
+
+                // parse the optional variable list
+                size_t widx = 3;
+                // auto vars = grpIt->second;
+                while (words.size() > widx && !isComment(words[widx]))
+                {
+                    // FIXME: check existence of variable
+                    // auto varIt = vars.find(words[widx])
+                    cmd->variables.push_back(words[widx]);
+                    ++widx;
+                }
+            }
+            else if (key == "read" && currentAppId == settings.appId)
+            {
+                if (words.size() < 4)
+                {
+                    throw std::invalid_argument("Line for 'read' is invalid. "
+                                                "Need at least 3 arguments: "
+                                                "mode, output name, group "
+                                                "name ");
+                }
+                std::string mode(words[1]);
+                std::transform(mode.begin(), mode.end(), mode.begin(),
+                               ::tolower);
+                std::string fileName(words[2]);
+                std::string groupName(words[3]);
+                auto grpIt = cfg.groupVariablesMap.find(groupName);
+                if (grpIt == cfg.groupVariablesMap.end())
+                {
+                    throw std::invalid_argument(
+                        "Group '" + groupName +
+                        "' used in 'read' command is undefined. ");
+                }
+                if (mode != "next" && mode != "latest")
+                {
+                    throw std::invalid_argument(
+                        "Mode (1st argument) for 'read' is invalid. "
+                        "It must be either 'next' or 'latest'");
+                }
+
+                if (verbose0)
+                {
+                    std::cout << "--> Command Read mode = " << mode
+                              << "  input = " << words[2]
+                              << "  group = " << groupName << std::endl;
+                }
+                auto cmd = std::make_shared<CommandRead>(words[2], words[3]);
+                cfg.commands.push_back(cmd);
+
+                // parse the optional variable list
+                size_t widx = 3;
+                // auto vars = grpIt->second;
+                while (words.size() > widx && !isComment(words[widx]))
+                {
+                    // FIXME: check existence of variable
+                    // auto varIt = vars.find(words[widx])
+                    cmd->variables.push_back(words[widx]);
+                    ++widx;
+                }
             }
             else if (key == "array")
             {
                 // process config line and get global array info
-                OutputVariable ov = processArray(words, settings);
+                VariableInfo ov = processArray(words, settings);
                 ov.datasize = ov.elemsize;
                 size_t pos[ov.ndim]; // Position of rank in 5D space
 
@@ -348,7 +579,7 @@ Config processConfig(const Settings &settings)
                 // Allocate data array
                 ov.data.resize(ov.datasize);
 
-                cfg.variables.push_back(ov);
+                currentVariables->push_back(ov);
                 if (settings.verbose > 2)
                 {
                     std::cout << "--> rank = " << settings.myRank
@@ -376,5 +607,9 @@ Config processConfig(const Settings &settings)
         }
     }
     configFile.close();
+    if (verbose0 > 2)
+    {
+        printConfig(cfg);
+    }
     return cfg;
 }

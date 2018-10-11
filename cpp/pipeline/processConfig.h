@@ -8,6 +8,7 @@
 #ifndef PROCESS_CONFIG_H
 #define PROCESS_CONFIG_H
 
+#include <map>
 #include <string>
 #include <vector>
 
@@ -15,7 +16,7 @@
 
 #include "settings.h"
 
-struct OutputVariable
+struct VariableInfo
 {
     std::string name;
     std::string type;
@@ -28,16 +29,65 @@ struct OutputVariable
     size_t elemsize;
     size_t datasize;
     std::vector<char> data;
-    bool availableInInput;
+    bool readFromInput;
+};
+
+enum Operation
+{
+    Sleep,
+    Write,
+    Read
+};
+
+class Command
+{
+public:
+    Operation op;
+    std::string conditionalGroup;
+    Command(Operation operation) : op(operation){};
+    virtual ~Command() = 0;
+};
+
+class CommandSleep : public Command
+{
+public:
+    size_t sleepTime_us = 0; // in microseconds
+    CommandSleep(size_t time) : Command(Operation::Sleep){};
+    ~CommandSleep() = default;
+};
+
+class CommandWrite : public Command
+{
+public:
+    std::string streamName;
+    std::string groupName;
+    std::vector<std::string> variables;
+    CommandWrite(std::string stream, std::string group)
+    : Command(Operation::Write), streamName(stream), groupName(group){};
+    ~CommandWrite() = default;
+};
+
+class CommandRead : public Command
+{
+public:
+    adios2::StepMode stepMode;
+    std::string streamName;
+    std::string groupName;
+    float timeout_sec;
+    std::vector<std::string> variables;
+    CommandRead(std::string stream, std::string group)
+    : Command(Operation::Read), stepMode(adios2::StepMode::NextAvailable),
+      streamName(stream), groupName(group), timeout_sec(84600){};
+    ~CommandRead() = default;
 };
 
 struct Config
 {
     size_t nSteps = 1;
-    size_t sleepBeforeIO_us = 0; // in microseconds
-    size_t sleepBetweenIandO_us = 0;
-    size_t sleepAfterIO_us = 0;
-    std::vector<OutputVariable> variables;
+    // groupName, list of variables
+    std::map<std::string, std::vector<VariableInfo>> groupVariablesMap;
+    // appID, list of commands
+    std::vector<std::shared_ptr<Command>> commands;
     size_t currentConfigLineNumber = 0;
 };
 

@@ -1,0 +1,73 @@
+# Config file for Task 1 in a pipeline
+#   - Produce variables  a  b  c 
+#   - Write variable     a  b  c     to    stream_T1.bp
+#   - Read in variables  from Task2  from  stream_T2.bp
+#   - Write variables    d e         to    debug_T2_to_T1.bp
+
+# Config file for Task 2 in a pipeline
+#   - Read in variables  a  b  from Task 1 (ignore c) from stream_T1.bp
+#   - Produce variable   d  e
+#   - Write variables    d  e        to   stream_T2.bp
+#   - Write variables    a  b        to   debug_T1_to_T2.bp
+
+
+group  io_T1
+  # item  type    varname     N   [gdim1 gdim2 ... gdimN  decomp1 decomp2 ... decompN]
+  array   double  a           2    100   200              X       YZ
+  array   float   b           1    100                    XYZ 
+  array   float   c           3    100   200   300        XY      z     1
+
+group io_T2
+  # item  type    varname     N   [gdim1 gdim2 ... gdimN  decomp1 decomp2 ... decompN]
+  array   double  a           2    100   200              XY      Z
+  array   float   b           1    100                    XYZ 
+  array   int     d           3    100   200   300        XY      z     1
+  array   float   e           2    250   128              X       YZ
+
+## Specify the number of output steps 
+## This applies to the task which starts with writing. 
+## Tasks that start with reading will process all steps from their producers
+
+## Task 1 actions
+app 1
+  steps   3
+  sleep   2.0      
+    # write all of io_T1 into stream_T1.bp
+  write   stream_T1.bp    io_T1
+  sleep   0.1
+    # read select variables from stream_T2 using io_T2 definition
+  read next  stream_T2.bp    io_T2   d   e
+  sleep       1.123456789
+  write   debug_T2_to_T1.bp io_T2  d  e
+
+## Task 2 actions
+app 2
+  sleep   0.1
+  #  read a & b from stream_T1.bp using io_T2 (!) definition
+  read next   stream_T1.bp    io_T2   3600   a   b
+  sleep   2.0      
+  #  write only d & e from io_T2 into stream_T2.bp
+  write   stream_T2.bp    io_T2   d   e
+  write   debug_T1_to_T2.bp io_T2  a  b
+  sleep       1.123456789
+
+
+#  Possible read patterns by app 2
+#
+#  read all variables using io_T1 (the group used by the producer of the stream)
+#     with blocking wait for 1h for the new data to come in
+// read next   stream_T1.bp    io_T1   3600
+#  read all variables using io_T2 (only matching variables are read in)
+// read next    stream_T1.bp    io_T2   3600
+// read next  stream_T1.bp    io_T2   3600  a b d e 
+
+#  read the latest step instead of the next available
+   read latest stream_T1.bp   io_T2  3600
+
+#  do not wait for data to come in
+#  if there is no read, subsequent commands may be skipped
+// read next   stream_T1.bp    io_T2   0
+// cond sleep  3.0
+// cond write  out.bp          io_T2   0
+
+
