@@ -15,6 +15,22 @@
 #include "decomp.h"
 #include "processConfig.h"
 
+Command::Command(Operation operation) : op(operation){};
+Command::~Command(){};
+
+CommandSleep::CommandSleep(size_t time)
+: Command(Operation::Sleep), sleepTime_us(time){};
+CommandSleep::~CommandSleep(){};
+
+CommandWrite::CommandWrite(std::string stream, std::string group)
+: Command(Operation::Write), streamName(stream), groupName(group){};
+CommandWrite::~CommandWrite(){};
+
+CommandRead::CommandRead(std::string stream, std::string group)
+: Command(Operation::Read), stepMode(adios2::StepMode::NextAvailable),
+  streamName(stream), groupName(group), timeout_sec(84600){};
+CommandRead::~CommandRead(){};
+
 std::vector<std::string> FileToLines(std::ifstream &configfile)
 {
     std::vector<std::string> lines;
@@ -281,9 +297,9 @@ void printConfig(const Config &cfg)
 {
     std::cout << "\nConfig: \n"
               << "    nSteps    =  " << cfg.nSteps
-              << "    nGroups   = " << cfg.groupVariablesMap.size()
+              << "    nGroups   = " << cfg.groupVariableListMap.size()
               << "    nCommands = " << cfg.commands.size() << std::endl;
-    for (const auto &mapIt : cfg.groupVariablesMap)
+    for (const auto &mapIt : cfg.groupVariableListMap)
     {
         std::cout << "    Group " << mapIt.first << ":" << std::endl;
         for (const auto &vi : mapIt.second)
@@ -312,12 +328,13 @@ void printConfig(const Config &cfg)
             auto cmdW = dynamic_cast<CommandWrite *>(cmd.get());
             std::cout << "        Write to output " << cmdW->streamName
                       << " the group " << cmdW->groupName;
-            if (!cmdW->variables.empty())
+            auto grpIt = cfg.groupVariablesMap.find(cmdW->groupName);
+            if (cmdW->variables.size() < grpIt->second.size())
             {
                 std::cout << " with selected variables:  ";
                 for (const auto &v : cmdW->variables)
                 {
-                    std::cout << v << " ";
+                    std::cout << v->name << " ";
                 }
             }
             std::cout << std::endl;
@@ -343,7 +360,7 @@ void printConfig(const Config &cfg)
                 std::cout << " with selected variables:  ";
                 for (const auto &v : cmdR->variables)
                 {
-                    std::cout << v << " ";
+                    std::cout << v->name << " ";
                 }
             }
             std::cout << std::endl;
@@ -351,6 +368,21 @@ void printConfig(const Config &cfg)
         }
         }
         std::cout << std::endl;
+    }
+}
+
+void printVarMaps(Config &cfg, std::string &groupName)
+{
+    std::cout << "DEBUG: PrintVarMap group =  " << groupName << std::endl;
+    auto grpIt = cfg.groupVariablesMap.find(groupName);
+    // std::cout << "    varMap = " << static_cast<void *>(grpIt->second)
+    //          << std::endl;
+
+    for (auto &v : grpIt->second)
+    {
+        std::cout << "     variable name first = " << v.first
+                  << " second->name = " << v.second->name
+                  << " type = " << v.second->type << std::endl;
     }
 }
 
@@ -373,7 +405,8 @@ Config processConfig(const Settings &settings)
     Config cfg;
     std::string currentGroup;
     int currentAppId = -1;
-    std::vector<VariableInfo> *currentVariables = nullptr;
+    std::vector<VariableInfo> *currentVarList = nullptr;
+    std::map<std::string, VariableInfo *> *currentVarMap = nullptr;
     std::vector<std::string> lines = FileToLines(configFile);
     for (auto &line : lines)
     {
@@ -427,13 +460,15 @@ Config processConfig(const Settings &settings)
                     std::cout << "--> New variable group: " << currentGroup
                               << std::endl;
                 }
-                auto it = cfg.groupVariablesMap.emplace(
+                auto it1 = cfg.groupVariableListMap.emplace(
                     currentGroup, std::initializer_list<VariableInfo>{});
-                // auto v = it.first->second;
-                currentVariables = &it.first->second;
-                // currentVariables = &cfg.variables[currentGroup];
+                currentVarList = &it1.first->second;
+                std::map<std::string, VariableInfo *> emptymap;
+                auto it2 =
+                    cfg.groupVariablesMap.emplace(currentGroup, emptymap);
+                currentVarMap = &it2.first->second;
             }
-            if (key == "app")
+            else if (key == "app")
             {
                 currentAppId = static_cast<int>(stringToSizet(words, 1, "app"));
                 if (verbose0)
@@ -443,7 +478,7 @@ Config processConfig(const Settings &settings)
                         << std::endl;
                 }
             }
-            if (key == "steps")
+            else if (key == "steps")
             {
                 cfg.nSteps = stringToSizet(words, 1, "steps");
                 if (verbose0)
@@ -452,102 +487,161 @@ Config processConfig(const Settings &settings)
                               << std::endl;
                 }
             }
-            else if (key == "sleep" && currentAppId == settings.appId)
+            else if (key == "sleep")
             {
-                size_t d = stringToDouble(words, 1, "sleep");
-                if (verbose0)
+                if (currentAppId == settings.appId)
                 {
-                    std::cout
-                        << "--> Command Sleep for: " << std::setprecision(7)
-                        << d << " seconds" << std::endl;
-                }
-                size_t t_us = static_cast<size_t>(d * 1000000);
-                auto cmd = std::make_shared<CommandSleep>(t_us);
-                cfg.commands.push_back(cmd);
-            }
-            else if (key == "write" && currentAppId == settings.appId)
-            {
-                if (words.size() < 3)
-                {
-                    throw std::invalid_argument(
-                        "Line for 'write' is invalid. "
-                        "Need at least output name and group name ");
-                }
-                std::string fileName(words[1]);
-                std::string groupName(words[2]);
-                auto grpIt = cfg.groupVariablesMap.find(groupName);
-                if (grpIt == cfg.groupVariablesMap.end())
-                {
-                    throw std::invalid_argument(
-                        "Group '" + groupName +
-                        "' used in 'write' command is undefined. ");
-                }
-
-                if (verbose0)
-                {
-                    std::cout << "--> Command Write output = " << fileName
-                              << "  group = " << groupName << std::endl;
-                }
-                auto cmd = std::make_shared<CommandWrite>(fileName, groupName);
-                cfg.commands.push_back(cmd);
-
-                // parse the optional variable list
-                size_t widx = 3;
-                // auto vars = grpIt->second;
-                while (words.size() > widx && !isComment(words[widx]))
-                {
-                    // FIXME: check existence of variable
-                    // auto varIt = vars.find(words[widx])
-                    cmd->variables.push_back(words[widx]);
-                    ++widx;
+                    size_t d = stringToDouble(words, 1, "sleep");
+                    if (verbose0)
+                    {
+                        std::cout
+                            << "--> Command Sleep for: " << std::setprecision(7)
+                            << d << " seconds" << std::endl;
+                    }
+                    size_t t_us = static_cast<size_t>(d * 1000000);
+                    auto cmd = std::make_shared<CommandSleep>(t_us);
+                    cfg.commands.push_back(cmd);
                 }
             }
-            else if (key == "read" && currentAppId == settings.appId)
+            else if (key == "write")
             {
-                if (words.size() < 4)
+                if (currentAppId == settings.appId)
                 {
-                    throw std::invalid_argument("Line for 'read' is invalid. "
-                                                "Need at least 3 arguments: "
-                                                "mode, output name, group "
-                                                "name ");
-                }
-                std::string mode(words[1]);
-                std::transform(mode.begin(), mode.end(), mode.begin(),
-                               ::tolower);
-                std::string fileName(words[2]);
-                std::string groupName(words[3]);
-                auto grpIt = cfg.groupVariablesMap.find(groupName);
-                if (grpIt == cfg.groupVariablesMap.end())
-                {
-                    throw std::invalid_argument(
-                        "Group '" + groupName +
-                        "' used in 'read' command is undefined. ");
-                }
-                if (mode != "next" && mode != "latest")
-                {
-                    throw std::invalid_argument(
-                        "Mode (1st argument) for 'read' is invalid. "
-                        "It must be either 'next' or 'latest'");
-                }
+                    if (words.size() < 3)
+                    {
+                        throw std::invalid_argument(
+                            "Line for 'write' is invalid. "
+                            "Need at least output name and group name ");
+                    }
+                    std::string fileName(words[1]);
+                    std::string groupName(words[2]);
+                    auto grpIt = cfg.groupVariablesMap.find(groupName);
+                    if (grpIt == cfg.groupVariablesMap.end())
+                    {
+                        throw std::invalid_argument(
+                            "Group '" + groupName +
+                            "' used in 'write' command is undefined. ");
+                    }
 
-                if (verbose0)
-                {
-                    std::cout << "--> Command Read mode = " << mode
-                              << "  input = " << words[2]
-                              << "  group = " << groupName << std::endl;
-                }
-                auto cmd = std::make_shared<CommandRead>(words[2], words[3]);
-                cfg.commands.push_back(cmd);
+                    if (verbose0)
+                    {
+                        std::cout << "--> Command Write output = " << fileName
+                                  << "  group = " << groupName << std::endl;
+                    }
+                    auto cmd =
+                        std::make_shared<CommandWrite>(fileName, groupName);
+                    cfg.commands.push_back(cmd);
 
-                // parse the optional variable list
-                size_t widx = 3;
-                // auto vars = grpIt->second;
-                while (words.size() > widx && !isComment(words[widx]))
+                    // parse the optional variable list
+                    size_t widx = 3;
+                    while (words.size() > widx && !isComment(words[widx]))
+                    {
+                        auto vIt = grpIt->second.find(words[widx]);
+                        if (vIt == grpIt->second.end())
+                        {
+                            throw std::invalid_argument(
+                                "Group '" + groupName +
+                                "' used in 'write' command has no variable '" +
+                                words[widx] + "' defined.");
+                        }
+                        cmd->variables.push_back(vIt->second);
+                        ++widx;
+                    }
+
+                    if (cmd->variables.empty())
+                    {
+                        // no variables, we copy here ALL variables in the group
+                        // (in the user defined order; copy only a pointer)
+                        auto vars = cfg.groupVariableListMap.find(groupName);
+                        for (auto &v : vars->second)
+                        {
+                            cmd->variables.push_back(&v);
+                        }
+                    }
+                }
+            }
+            else if (key == "read")
+            {
+                if (currentAppId == settings.appId)
                 {
-                    // FIXME: check existence of variable
-                    // auto varIt = vars.find(words[widx])
-                    cmd->variables.push_back(words[widx]);
-                    ++widx;
+                    if (words.size() < 4)
+                    {
+                        throw std::invalid_argument(
+                            "Line for 'read' is invalid. "
+                            "Need at least 3 arguments: "
+                            "mode, output name, group "
+                            "name ");
+                    }
+                    std::string mode(words[1]);
+                    std::transform(mode.begin(), mode.end(), mode.begin(),
+                                   ::tolower);
+                    std::string fileName(words[2]);
+                    std::string groupName(words[3]);
+                    if (verbose0)
+                    {
+                        printVarMaps(cfg, groupName);
+                    }
+                    auto grpIt = cfg.groupVariablesMap.find(groupName);
+                    if (grpIt == cfg.groupVariablesMap.end())
+                    {
+                        throw std::invalid_argument(
+                            "Group '" + groupName +
+                            "' used in 'read' command is undefined. ");
+                    }
+                    if (mode != "next" && mode != "latest")
+                    {
+                        throw std::invalid_argument(
+                            "Mode (1st argument) for 'read' is invalid. "
+                            "It must be either 'next' or 'latest'");
+                    }
+
+                    if (verbose0)
+                    {
+                        std::cout << "--> Command Read mode = " << mode
+                                  << "  input = " << words[2]
+                                  << "  group = " << groupName << std::endl;
+                    }
+                    auto cmd =
+                        std::make_shared<CommandRead>(words[2], words[3]);
+                    cfg.commands.push_back(cmd);
+
+                    // parse the optional variable list
+                    size_t widx = 4;
+                    while (words.size() > widx && !isComment(words[widx]))
+                    {
+                        auto vIt = grpIt->second.find(words[widx]);
+                        if (vIt == grpIt->second.end())
+                        {
+                            throw std::invalid_argument(
+                                "Group '" + groupName +
+                                "' used in 'write' command has no variable '" +
+                                words[widx] + "' defined.");
+                        }
+                        if (verbose0)
+                        {
+                            std::cout << "       select variable = "
+                                      << vIt->second->name << std::endl;
+                            std::cout << "       DEBUG variable = "
+                                      << vIt->second->name
+                                      << " type = " << vIt->second->type
+                                      << " varmap = "
+                                      << static_cast<void *>(vIt->second)
+                                      << std::endl;
+                        }
+                        cmd->variables.push_back(vIt->second);
+                        ++widx;
+                    }
+
+                    if (cmd->variables.empty())
+                    {
+                        // no variables, we copy here ALL variables in the group
+                        // (in the user defined order; copy only a pointer)
+                        auto vars = cfg.groupVariableListMap.find(groupName);
+                        for (auto &v : vars->second)
+                        {
+                            cmd->variables.push_back(&v);
+                        }
+                    }
                 }
             }
             else if (key == "array")
@@ -579,7 +673,18 @@ Config processConfig(const Settings &settings)
                 // Allocate data array
                 ov.data.resize(ov.datasize);
 
-                currentVariables->push_back(ov);
+                currentVarList->push_back(ov);
+                currentVarMap->emplace(ov.name, &currentVarList->back());
+
+                /* DEBUG */
+                if (verbose0)
+                {
+                    auto grpIt = cfg.groupVariablesMap.find(currentGroup);
+                    auto vIt = grpIt->second.find(ov.name);
+                    std::cout << "       DEBUG variable = " << vIt->second->name
+                              << " type = " << vIt->second->type << " varmap = "
+                              << static_cast<void *>(vIt->second) << std::endl;
+                }
                 if (settings.verbose > 2)
                 {
                     std::cout << "--> rank = " << settings.myRank

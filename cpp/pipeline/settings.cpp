@@ -18,12 +18,10 @@ struct option options[] = {{"help", no_argument, NULL, 'h'},
                            {"verbose", no_argument, NULL, 'v'},
                            {"appid", required_argument, NULL, 'a'},
                            {"config", required_argument, NULL, 'c'},
-                           {"read", required_argument, NULL, 'r'},
-                           {"write", required_argument, NULL, 'w'},
                            {"decomp", required_argument, NULL, 'd'},
                            {NULL, 0, NULL, 0}};
 
-static const char *optstring = "-hva:c:r:w:d:";
+static const char *optstring = "-hva:c:d:";
 
 size_t Settings::ndigits(size_t n) const
 {
@@ -35,13 +33,9 @@ size_t Settings::ndigits(size_t n) const
 void Settings::displayHelp()
 {
     std::cout
-        << "Usage: pipeline -a appid -c config  [-r input ] [-w output]  -d d1 "
-           "[d2 .. "
-           "dN] \n"
+        << "Usage: pipeline -a appid -c config  -d d1 [d2 .. dN] \n"
         << "  -a appID:  unique number for each pipeline application\n"
         << "  -c config: data specification config file\n"
-        << "  -r input:  read data from input file/stream\n"
-        << "  -w output: generate and write data to output file/stream\n"
         << "  -d ...     define process decomposition:\n"
         << "      d1:        number of processes in 1st (slowest) dimension\n"
         << "      dN:        number of processes in Nth dimension\n"
@@ -87,14 +81,6 @@ int Settings::processArgs(int argc, char *argv[])
                 displayHelp();
             }
             return 1;
-        case 'r':
-            inputName = optarg;
-            doRead = true;
-            break;
-        case 'w':
-            outputName = optarg;
-            doWrite = true;
-            break;
         case 'd':
             processDecomp[nDecomp] =
                 stringToNumber("decomposition in dimension 1", optarg);
@@ -152,11 +138,6 @@ int Settings::processArgs(int argc, char *argv[])
     {
         throw std::invalid_argument(
             "Missing argument for config file (see -c option)");
-    }
-    if (!doRead && !doWrite)
-    {
-        throw std::invalid_argument("At least write or read must be specified, "
-                                    "or both (see -w and -r options)");
     }
 
     return 0;

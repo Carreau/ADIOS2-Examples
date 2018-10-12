@@ -34,8 +34,9 @@ app 1
 
 # Task 2 actions
 app 2
+  steps   3
   # read a & b from stream_T1.bp using io_T2 (!) definition
-  read    stream_T1.bp    io_T2   a   b
+  read next stream_T1.bp    io_T2   a   b
   sleep   2.0      
   # write io_T2 into stream_T2.bp
   #    a & b  will be the data from stream_T1.bp

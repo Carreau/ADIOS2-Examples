@@ -23,10 +23,6 @@ class Settings
 public:
     /* user arguments */
     std::string configFileName;
-    bool doRead = false;
-    std::string inputName;
-    bool doWrite = false;
-    std::string outputName;
     unsigned int verbose = 0;
     size_t appId = 0;
     //   process decomposition

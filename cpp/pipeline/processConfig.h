@@ -44,48 +44,49 @@ class Command
 public:
     Operation op;
     std::string conditionalGroup;
-    Command(Operation operation) : op(operation){};
+    Command(Operation operation);
     virtual ~Command() = 0;
 };
 
 class CommandSleep : public Command
 {
 public:
-    size_t sleepTime_us = 0; // in microseconds
-    CommandSleep(size_t time) : Command(Operation::Sleep){};
-    ~CommandSleep() = default;
+    const size_t sleepTime_us = 0; // in microseconds
+    CommandSleep(size_t time);
+    ~CommandSleep();
 };
 
 class CommandWrite : public Command
 {
 public:
-    std::string streamName;
-    std::string groupName;
-    std::vector<std::string> variables;
-    CommandWrite(std::string stream, std::string group)
-    : Command(Operation::Write), streamName(stream), groupName(group){};
-    ~CommandWrite() = default;
+    const std::string streamName;
+    const std::string groupName;
+    std::vector<VariableInfo *> variables;
+    CommandWrite(std::string stream, std::string group);
+    ~CommandWrite();
 };
 
 class CommandRead : public Command
 {
 public:
-    adios2::StepMode stepMode;
-    std::string streamName;
-    std::string groupName;
-    float timeout_sec;
-    std::vector<std::string> variables;
-    CommandRead(std::string stream, std::string group)
-    : Command(Operation::Read), stepMode(adios2::StepMode::NextAvailable),
-      streamName(stream), groupName(group), timeout_sec(84600){};
-    ~CommandRead() = default;
+    const adios2::StepMode stepMode;
+    const std::string streamName;
+    const std::string groupName;
+    const float timeout_sec;
+    std::vector<VariableInfo *> variables;
+    CommandRead(std::string stream, std::string group);
+    ~CommandRead();
 };
 
 struct Config
 {
     size_t nSteps = 1;
-    // groupName, list of variables
-    std::map<std::string, std::vector<VariableInfo>> groupVariablesMap;
+    // groupName, list of variables to preserve user defined order
+    std::map<std::string, std::vector<VariableInfo>> groupVariableListMap;
+    // same group/variables but in an ordered map for finding
+    // a particular variable
+    std::map<std::string, std::map<std::string, VariableInfo *>>
+        groupVariablesMap;
     // appID, list of commands
     std::vector<std::shared_ptr<Command>> commands;
     size_t currentConfigLineNumber = 0;
