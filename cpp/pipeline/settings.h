@@ -23,6 +23,7 @@ class Settings
 public:
     /* user arguments */
     std::string configFileName;
+    std::string adiosConfigFileName;
     unsigned int verbose = 0;
     size_t appId = 0;
     //   process decomposition

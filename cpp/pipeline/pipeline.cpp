@@ -238,7 +238,26 @@ int main(int argc, char *argv[])
     if (!settings.processArguments(argc, argv, MPI_COMM_WORLD) &&
         !settings.extraArgumentChecks())
     {
-        adios2::ADIOS adios("adios2.xml", settings.appComm, adios2::DebugON);
+        adios2::ADIOS adios;
+        if (settings.adiosConfigFileName.empty())
+        {
+            if (!settings.myRank && settings.verbose)
+            {
+                std::cout << "Use ADIOS without XML configuration "
+                          << std::endl;
+            }
+            adios = adios2::ADIOS(settings.appComm, adios2::DebugON);
+        }
+        else
+        {
+            if (!settings.myRank && settings.verbose)
+            {
+                std::cout << "Use ADIOS xml file "
+                          << settings.adiosConfigFileName << std::endl;
+            }
+            adios = adios2::ADIOS(settings.adiosConfigFileName,
+                                  settings.appComm, adios2::DebugON);
+        }
         Config cfg;
         size_t currentConfigLineNumber = 0;
 

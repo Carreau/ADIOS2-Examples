@@ -19,9 +19,10 @@ struct option options[] = {{"help", no_argument, NULL, 'h'},
                            {"appid", required_argument, NULL, 'a'},
                            {"config", required_argument, NULL, 'c'},
                            {"decomp", required_argument, NULL, 'd'},
+                           {"xml", required_argument, NULL, 'x'},
                            {NULL, 0, NULL, 0}};
 
-static const char *optstring = "-hva:c:d:";
+static const char *optstring = "-hva:c:d:x:";
 
 size_t Settings::ndigits(size_t n) const
 {
@@ -33,13 +34,14 @@ size_t Settings::ndigits(size_t n) const
 void Settings::displayHelp()
 {
     std::cout
-        << "Usage: pipeline -a appid -c config  -d d1 [d2 .. dN] \n"
+        << "Usage: pipeline -a appid -c config  -d d1 [d2 .. dN] [-x file]\n"
         << "  -a appID:  unique number for each pipeline application\n"
         << "  -c config: data specification config file\n"
         << "  -d ...     define process decomposition:\n"
         << "      d1:        number of processes in 1st (slowest) dimension\n"
         << "      dN:        number of processes in Nth dimension\n"
         << "                 d1*d2*..*dN must equal the number of processes\n"
+        << "  -x file    ADIOS configuration XML file\n"
         << "  -v         increase verbosity\n"
         << "  -h         display this help\n\n";
 }
@@ -74,6 +76,9 @@ int Settings::processArgs(int argc, char *argv[])
             break;
         case 'c':
             configFileName = optarg;
+            break;
+        case 'x':
+            adiosConfigFileName = optarg;
             break;
         case 'h':
             if (!myRank)

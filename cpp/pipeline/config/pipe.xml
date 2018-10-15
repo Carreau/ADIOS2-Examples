@@ -28,8 +28,8 @@
     <operator name="CompressorZFP" type="zfp"/>
     <operator name="CompressorSZ" type="sz"/>
 
-    <io name="SimulationOutput">
-        <variable name="T">
+    <io name="io_T1">
+        <variable name="a">
             <operation operator="CompressorZFP">
                 <parameter key="accuracy" value="0.0001"/>
             </operation>
@@ -38,33 +38,38 @@
 
     -->
 
-
-    <!--==============================================
-           Configuration for the Data Generator Output
-        ==============================================-->
-    
-    <io name="DataGeneratorOutput">
-        <engine type="BPFile">
-        </engine>
-    </io>
-
-    <!--============================================
-           Configuration for the Stage-in App Output
-        ============================================-->
-    
-    <io name="StageInOutput">
-        <engine type="BPFile">
-        </engine>
-    </io>
-
+    <!--===========================================
+        Create an operator inside the ADIOS object 
+        ===========================================-->
+    <operator name="CompressorZFP" type="zfp"/>
 
     <!--===========================================
-           Configuration for the Simulation Output 
+           Configuration for io_T1 group
         ==========================================-->
 
-    <io name="SimulationOutput">
+    <io name="io_T1">
         <engine type="BPFile">
         </engine>
     </io>
+
+
+    <!--=========================================
+           Configuration for io_T2_in group
+        =========================================-->
+    
+    <io name="io_T2_in">
+        <engine type="BPFile">
+        </engine>
+    </io>
+
+    <!--=========================================
+           Configuration for io_T2_out group
+        =========================================-->
+    
+    <io name="io_T2_out">
+        <engine type="BPFile">
+        </engine>
+    </io>
+
 
 </adios-config>
