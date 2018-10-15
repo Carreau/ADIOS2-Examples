@@ -43,7 +43,7 @@ class Command
 {
 public:
     Operation op;
-    std::string conditionalGroup;
+    std::string conditionalStream;
     Command(Operation operation);
     virtual ~Command() = 0;
 };
@@ -89,12 +89,13 @@ struct Config
         groupVariablesMap;
     // appID, list of commands
     std::vector<std::shared_ptr<Command>> commands;
-    size_t currentConfigLineNumber = 0;
+    // Read streams status flag for supporting conditionals
+    std::map<std::string, bool> condMap; // stream name
 };
 
 const std::vector<std::pair<std::string, size_t>> supportedTypes = {
     {"double", sizeof(double)}, {"float", sizeof(float)}, {"int", sizeof(int)}};
 
-Config processConfig(const Settings &settings);
+Config processConfig(const Settings &settings, size_t *currentConfigLineNumber);
 
 #endif /* PROCESS_CONFIG_H */

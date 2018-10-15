@@ -32,9 +32,12 @@ app 2
   steps   3
   # read a & b from stream_T1.bp using io_T2 definition with blocking wait
   read  next  stream_T1.bp    io_T2  -1   a   b
-  sleep   2.0      
+
+  # Sleep and write only if read was successful:
+  cond stream_T1.bp   sleep   2.0      
   # write io_T2 into stream_T2.bp
-  write   stream_T2.bp    io_T2  
+  cond stream_T1.bp   write   stream_T2.bp    io_T2  
+
   sleep   1.123456789
 
 

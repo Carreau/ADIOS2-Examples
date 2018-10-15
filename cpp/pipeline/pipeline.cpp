@@ -240,23 +240,24 @@ int main(int argc, char *argv[])
     {
         adios2::ADIOS adios("adios2.xml", settings.appComm, adios2::DebugON);
         Config cfg;
+        size_t currentConfigLineNumber = 0;
 
         try
         {
-            cfg = processConfig(settings);
+            cfg = processConfig(settings, &currentConfigLineNumber);
         }
         catch (std::invalid_argument &e) // config file processing errors
         {
             if (!settings.myRank)
             {
-                if (!cfg.currentConfigLineNumber)
+                if (!currentConfigLineNumber)
                 {
                     std::cout << "Config file error: " << e.what() << std::endl;
                 }
                 else
                 {
                     std::cout << "Config file error in line "
-                              << cfg.currentConfigLineNumber << ": " << e.what()
+                              << currentConfigLineNumber << ": " << e.what()
                               << std::endl;
                 }
             }
@@ -306,6 +307,7 @@ int main(int argc, char *argv[])
                 readEngineMap;
             std::map<std::string, std::shared_ptr<adios2::Engine>>
                 writeEngineMap;
+
             for (const auto &st : streamsInOrder)
             {
                 const std::string &streamName = st.first;
@@ -348,6 +350,18 @@ int main(int argc, char *argv[])
                 }
                 for (const auto cmd : cfg.commands)
                 {
+                    if (!cmd->conditionalStream.empty() &&
+                        !cfg.condMap.at(cmd->conditionalStream))
+                    {
+                        if (!settings.myRank && settings.verbose)
+                        {
+                            std::cout << "    Skip command because of status "
+                                         "of stream "
+                                      << cmd->conditionalStream << std::endl;
+                        }
+                        continue;
+                    }
+
                     switch (cmd->op)
                     {
                     case Operation::Sleep:
@@ -378,7 +392,9 @@ int main(int argc, char *argv[])
                         auto cmdR = dynamic_cast<CommandRead *>(cmd.get());
                         auto reader = readEngineMap[cmdR->streamName];
                         auto io = ioMap[cmdR->groupName];
-                        readADIOS(reader, io, cmdR, cfg, settings, step);
+                        const bool succ =
+                            readADIOS(reader, io, cmdR, cfg, settings, step);
+                        cfg.condMap[cmdR->streamName] = succ;
                         break;
                     }
                     }

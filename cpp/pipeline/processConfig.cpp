@@ -239,61 +239,6 @@ VariableInfo processArray(std::vector<std::string> &words,
     return ov;
 }
 
-/*
-void processSleep(std::vector<std::string> &words, const Settings &settings,
-                  Config &cfg, unsigned int verbose)
-{
-    if (words.size() < 3)
-    {
-        throw std::invalid_argument(
-            "Line for Sleep definition is invalid. The format is \n"
-            "sleep   [before|between|after]  duration\n"
-            "duration is a floating point number and is interpreted as "
-            "seconds.");
-    }
-
-    double d = stringToDouble(words, 2, "sleep duration");
-
-    std::string w(words[1]);
-    std::transform(w.begin(), w.end(), w.begin(), ::tolower);
-    if (w == "before")
-    {
-        cfg.sleepBeforeIO_us = static_cast<size_t>(d * 1000000);
-        if (verbose)
-        {
-            std::cout << "--> Sleep Before IO set to: " << std::setprecision(7)
-                      << d << " seconds" << std::endl;
-        }
-    }
-    else if (w == "between")
-    {
-        cfg.sleepBetweenIandO_us = static_cast<size_t>(d * 1000000);
-        if (verbose)
-        {
-            std::cout << "--> Sleep Between I and O set to: "
-                      << std::setprecision(7) << d << " seconds" << std::endl;
-        }
-    }
-    else if (w == "after")
-    {
-        cfg.sleepAfterIO_us = static_cast<size_t>(d * 1000000);
-        if (verbose)
-        {
-            std::cout << "--> Sleep After IO set to: " << std::setprecision(7)
-                      << d << " seconds" << std::endl;
-        }
-    }
-    else
-    {
-        throw std::invalid_argument(
-            "Line for Sleep definition is invalid. The format is \n"
-            "sleep   [before|between|after]  duration\n"
-            "duration is a floating point number and is interpreted as "
-            "seconds.");
-    }
-}
-*/
-
 void printConfig(const Config &cfg)
 {
     std::cout << "\nConfig: \n"
@@ -315,6 +260,11 @@ void printConfig(const Config &cfg)
     std::cout << "    Commands :" << std::endl;
     for (const auto cmd : cfg.commands)
     {
+        if (!cmd->conditionalStream.empty())
+        {
+            std::cout << "        if reading " << cmd->conditionalStream
+                      << " is successful then... ";
+        }
         switch (cmd->op)
         {
         case Operation::Sleep:
@@ -387,7 +337,27 @@ void printVarMaps(Config &cfg, std::string &groupName)
     }
 }
 
-Config processConfig(const Settings &settings)
+void globalChecks(const Config &cfg, const Settings &settings)
+{
+    for (const auto cmd : cfg.commands)
+    {
+        if (!cmd->conditionalStream.empty())
+        {
+            try
+            {
+                const bool f = cfg.condMap.at(cmd->conditionalStream);
+            }
+            catch (std::exception &e)
+            {
+                throw std::invalid_argument("Name used in conditional '" +
+                                            cmd->conditionalStream +
+                                            "' is not a read stream");
+            }
+        }
+    }
+}
+
+Config processConfig(const Settings &settings, size_t *currentConfigLineNumber)
 {
     unsigned int verbose0 =
         (settings.myRank ? 0 : settings.verbose); // only rank 0 prints info
@@ -411,12 +381,12 @@ Config processConfig(const Settings &settings)
     std::vector<std::string> lines = FileToLines(configFile);
     for (auto &line : lines)
     {
-        std::string conditionalGroup;
-        ++cfg.currentConfigLineNumber;
+        std::string conditionalStream;
+        ++*currentConfigLineNumber;
         if (verbose0 > 1)
         {
-            std::cout << "config " << cfg.currentConfigLineNumber << ": "
-                      << line << std::endl;
+            std::cout << "config " << *currentConfigLineNumber << ": " << line
+                      << std::endl;
         }
         std::vector<std::string> words = LineToWords(line);
         if (!words.empty() && !isComment(words[0]))
@@ -432,7 +402,7 @@ Config processConfig(const Settings &settings)
                         "Missing group name at word position "
                         "2");
                 }
-                conditionalGroup = words[1];
+                conditionalStream = words[1];
 
                 if (words.size() < 3)
                 {
@@ -502,6 +472,7 @@ Config processConfig(const Settings &settings)
                     }
                     size_t t_us = static_cast<size_t>(d * 1000000);
                     auto cmd = std::make_shared<CommandSleep>(t_us);
+                    cmd->conditionalStream = conditionalStream;
                     cfg.commands.push_back(cmd);
                 }
             }
@@ -532,6 +503,7 @@ Config processConfig(const Settings &settings)
                     }
                     auto cmd =
                         std::make_shared<CommandWrite>(fileName, groupName);
+                    cmd->conditionalStream = conditionalStream;
                     cfg.commands.push_back(cmd);
 
                     // parse the optional variable list
@@ -542,8 +514,9 @@ Config processConfig(const Settings &settings)
                         if (vIt == grpIt->second.end())
                         {
                             throw std::invalid_argument(
-                                "Group '" + groupName +
-                                "' used in 'write' command has no variable '" +
+                                "Group '" + groupName + "' used in 'write' "
+                                                        "command has no "
+                                                        "variable '" +
                                 words[widx] + "' defined.");
                         }
                         cmd->variables.push_back(vIt->second);
@@ -552,7 +525,8 @@ Config processConfig(const Settings &settings)
 
                     if (cmd->variables.empty())
                     {
-                        // no variables, we copy here ALL variables in the group
+                        // no variables, we copy here ALL variables in the
+                        // group
                         // (in the user defined order; copy only a pointer)
                         auto vars = cfg.groupVariableListMap.find(groupName);
                         for (auto &v : vars->second)
@@ -577,7 +551,7 @@ Config processConfig(const Settings &settings)
                     std::string mode(words[1]);
                     std::transform(mode.begin(), mode.end(), mode.begin(),
                                    ::tolower);
-                    std::string fileName(words[2]);
+                    std::string streamName(words[2]);
                     std::string groupName(words[3]);
                     if (verbose0)
                     {
@@ -624,8 +598,10 @@ Config processConfig(const Settings &settings)
                         std::cout << std::endl;
                     }
                     auto cmd =
-                        std::make_shared<CommandRead>(words[2], words[3]);
+                        std::make_shared<CommandRead>(streamName, groupName);
+                    cmd->conditionalStream = conditionalStream;
                     cfg.commands.push_back(cmd);
+                    cfg.condMap[streamName] = true;
 
                     // parse the optional variable list
                     size_t widx = 5;
@@ -635,8 +611,9 @@ Config processConfig(const Settings &settings)
                         if (vIt == grpIt->second.end())
                         {
                             throw std::invalid_argument(
-                                "Group '" + groupName +
-                                "' used in 'write' command has no variable '" +
+                                "Group '" + groupName + "' used in 'write' "
+                                                        "command has no "
+                                                        "variable '" +
                                 words[widx] + "' defined.");
                         }
                         if (verbose0)
@@ -656,7 +633,8 @@ Config processConfig(const Settings &settings)
 
                     if (cmd->variables.empty())
                     {
-                        // no variables, we copy here ALL variables in the group
+                        // no variables, we copy here ALL variables in the
+                        // group
                         // (in the user defined order; copy only a pointer)
                         auto vars = cfg.groupVariableListMap.find(groupName);
                         for (auto &v : vars->second)
@@ -676,14 +654,16 @@ Config processConfig(const Settings &settings)
                 // Calculate rank's position in ndim-space
                 decompRowMajor(ov.ndim, settings.myRank, ov.decomp.data(), pos);
 
-                // Calculate the local size and offsets based on the definition
+                // Calculate the local size and offsets based on the
+                // definition
                 for (size_t i = 0; i < ov.ndim; ++i)
                 {
                     size_t count = ov.shape[i] / ov.decomp[i];
                     size_t offs = count * pos[i];
                     if (pos[i] == ov.decomp[i] - 1 && pos[i] != 0)
                     {
-                        // last process in dim(i) need to write all the rest of
+                        // last process in dim(i) need to write all the rest
+                        // of
                         // dimension
                         count = ov.shape[i] - offs;
                     }
@@ -734,6 +714,8 @@ Config processConfig(const Settings &settings)
         }
     }
     configFile.close();
+    *currentConfigLineNumber = 0;
+    globalChecks(cfg, settings);
     if (verbose0 > 2)
     {
         printConfig(cfg);
