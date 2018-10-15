@@ -48,7 +48,7 @@
         ==========================================-->
 
     <io name="io_T1">
-        <engine type="BPFile">
+        <engine type="SST">
         </engine>
     </io>
 
@@ -57,19 +57,23 @@
            Configuration for io_T2_in group
         =========================================-->
     
-    <io name="io_T2_in">
-        <engine type="BPFile">
+    <io name="io_T2">
+        <engine type="SST">
         </engine>
     </io>
 
     <!--=========================================
-           Configuration for io_T2_out group
+           Configuration for debug outputs
         =========================================-->
-    
-    <io name="io_T2_out">
+    <io name="debug_1_2">
         <engine type="BPFile">
         </engine>
     </io>
+    <io name="debug_2_1">
+        <engine type="BPFile">
+        </engine>
+    </io>
+
 
 
 </adios-config>
