@@ -280,7 +280,7 @@ int main(int argc, char *argv[])
             for (const auto &st : streamsInOrder)
             {
                 const std::string &streamName = st.first;
-                const bool isWrite = st.second;
+                const bool isWrite = (st.second == Operation::Write);
                 if (isWrite)
                 {
                     auto &groupName = ioUsedInWrite[streamName];

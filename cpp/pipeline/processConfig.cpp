@@ -463,6 +463,7 @@ Config processConfig(const Settings &settings)
                 auto it1 = cfg.groupVariableListMap.emplace(
                     currentGroup, std::initializer_list<VariableInfo>{});
                 currentVarList = &it1.first->second;
+                currentVarList->reserve(1000);
                 std::map<std::string, VariableInfo *> emptymap;
                 auto it2 =
                     cfg.groupVariablesMap.emplace(currentGroup, emptymap);
