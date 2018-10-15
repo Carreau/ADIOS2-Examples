@@ -13,22 +13,22 @@
 #include "processConfig.h"
 #include "settings.h"
 
-void defineADIOSArray(adios2::IO &io, const VariableInfo *ov)
+void defineADIOSArray(std::shared_ptr<adios2::IO> io, const VariableInfo *ov)
 {
     if (ov->type == "double")
     {
-        adios2::Variable<double> v = io.DefineVariable<double>(
+        adios2::Variable<double> v = io->DefineVariable<double>(
             ov->name, ov->shape, ov->start, ov->count, true);
-        v = io.InquireVariable<double>(ov->name);
+        // v = io->InquireVariable<double>(ov->name);
     }
     else if (ov->type == "float")
     {
-        adios2::Variable<float> v = io.DefineVariable<float>(
+        adios2::Variable<float> v = io->DefineVariable<float>(
             ov->name, ov->shape, ov->start, ov->count, true);
     }
     else if (ov->type == "int")
     {
-        adios2::Variable<int> v = io.DefineVariable<int>(
+        adios2::Variable<int> v = io->DefineVariable<int>(
             ov->name, ov->shape, ov->start, ov->count, true);
     }
 }
@@ -132,7 +132,31 @@ bool readADIOS(std::shared_ptr<adios2::Engine> reader,
                std::shared_ptr<adios2::IO> io, CommandRead *cmdR, Config &cfg,
                const Settings &settings, size_t step)
 {
-    enum adios2::StepStatus status = reader->BeginStep();
+    if (!settings.myRank && settings.verbose)
+    {
+        std::cout << "    Read ";
+        if (cmdR->stepMode == adios2::StepMode::NextAvailable)
+        {
+            std::cout << "next available step from ";
+        }
+        else
+        {
+            std::cout << "latest step from ";
+        }
+
+        std::cout << cmdR->streamName << " using the group " << cmdR->groupName;
+        if (!cmdR->variables.empty())
+        {
+            std::cout << " with selected variables:  ";
+            for (const auto &v : cmdR->variables)
+            {
+                std::cout << v->name << " ";
+            }
+        }
+        std::cout << std::endl;
+    }
+    enum adios2::StepStatus status =
+        reader->BeginStep(cmdR->stepMode, cmdR->timeout_sec);
     if (status != adios2::StepStatus::OK)
     {
         return false;
@@ -161,13 +185,14 @@ bool readADIOS(std::shared_ptr<adios2::Engine> reader,
     return true;
 }
 
-void writeADIOS(std::shared_ptr<adios2::Engine> writer, CommandWrite *cmdW,
-                Config &cfg, const Settings &settings, size_t step)
+void writeADIOS(std::shared_ptr<adios2::Engine> writer,
+                std::shared_ptr<adios2::IO> io, CommandWrite *cmdW, Config &cfg,
+                const Settings &settings, size_t step)
 {
     if (!settings.myRank && settings.verbose)
     {
-        std::cout << "        Write to output " << cmdW->streamName
-                  << " the group " << cmdW->groupName << std::endl;
+        std::cout << "    Write to output " << cmdW->streamName << " the group "
+                  << cmdW->groupName << std::endl;
     }
 
     const double div =
@@ -181,8 +206,13 @@ void writeADIOS(std::shared_ptr<adios2::Engine> writer, CommandWrite *cmdW,
         {
             if (!settings.myRank && settings.verbose)
             {
-                std::cout << "    Fill array  " << ov->name << "  for output"
-                          << std::endl;
+                std::cout << "        Define and Fill array  " << ov->name
+                          << "  for output" << std::endl;
+            }
+
+            if (step == 1)
+            {
+                defineADIOSArray(io, ov);
             }
             fillArray(ov, myValue);
         }
@@ -190,7 +220,7 @@ void writeADIOS(std::shared_ptr<adios2::Engine> writer, CommandWrite *cmdW,
 
     if (!settings.myRank && settings.verbose)
     {
-        std::cout << "    Write data " << std::endl;
+        std::cout << "        Write data " << std::endl;
     }
     writer->BeginStep();
     for (const auto ov : cmdW->variables)
@@ -242,8 +272,7 @@ int main(int argc, char *argv[])
             /* 1. Assign stream names with group names that appear in
                commands */
             // map of <streamName, groupName>
-            std::map<std::string, std::string> ioUsedInWrite;
-            std::map<std::string, std::string> ioUsedInRead;
+            std::map<std::string, std::string> groupMap;
             // a vector of streams in the order they appear
             std::vector<std::pair<std::string, Operation>> streamsInOrder;
             for (const auto &cmd : cfg.commands)
@@ -251,14 +280,14 @@ int main(int argc, char *argv[])
                 if (cmd->op == Operation::Write)
                 {
                     auto cmdW = dynamic_cast<CommandWrite *>(cmd.get());
-                    ioUsedInWrite[cmdW->streamName] = cmdW->groupName;
+                    groupMap[cmdW->streamName] = cmdW->groupName;
                     streamsInOrder.push_back(
                         std::make_pair(cmdW->streamName, Operation::Write));
                 }
                 else if (cmd->op == Operation::Read)
                 {
                     auto cmdR = dynamic_cast<CommandRead *>(cmd.get());
-                    ioUsedInRead[cmdR->streamName] = cmdR->groupName;
+                    groupMap[cmdR->streamName] = cmdR->groupName;
                     streamsInOrder.push_back(
                         std::make_pair(cmdR->streamName, Operation::Read));
                 }
@@ -280,40 +309,32 @@ int main(int argc, char *argv[])
             for (const auto &st : streamsInOrder)
             {
                 const std::string &streamName = st.first;
+                std::shared_ptr<adios2::IO> io;
+                auto &groupName = groupMap[streamName];
+                auto it = ioMap.find(groupName);
+                if (it == ioMap.end())
+                {
+                    io = std::make_shared<adios2::IO>(
+                        adios.DeclareIO(groupName));
+                    ioMap[groupName] = io;
+                }
+                else
+                {
+                    io = it->second;
+                }
                 const bool isWrite = (st.second == Operation::Write);
                 if (isWrite)
                 {
-                    auto &groupName = ioUsedInWrite[streamName];
-                    adios2::IO io = adios.DeclareIO(groupName);
-                    ioMap[groupName] = std::make_shared<adios2::IO>(io);
-                    for (const auto &ov : cfg.groupVariableListMap[groupName])
-                    {
-                        defineADIOSArray(io, &ov);
-                    }
-                    adios2::Engine writer = io.Open(
+                    adios2::Engine writer = io->Open(
                         streamName, adios2::Mode::Write, settings.appComm);
                     writeEngineMap[streamName] =
                         std::make_shared<adios2::Engine>(writer);
-                    if (!settings.myRank && settings.verbose)
-                    {
-                        const auto varmap = io.AvailableVariables();
-                        std::cout << "List of variables in group " << groupName
-                                  << " for writing to: " << streamName
-                                  << std::endl;
-                        for (const auto &v : varmap)
-                        {
-                            std::cout << "        " << v.first << std::endl;
-                        }
-                    }
                 }
                 else /* Read */
                 {
-                    auto &groupName = ioUsedInRead[streamName];
-                    adios2::IO io = adios.DeclareIO(groupName);
-                    ioMap[groupName] = std::make_shared<adios2::IO>(io);
-                    adios2::Engine reader = io.Open(
+                    adios2::Engine reader = io->Open(
                         streamName, adios2::Mode::Read, settings.appComm);
-                    readEngineMap[groupName] =
+                    readEngineMap[streamName] =
                         std::make_shared<adios2::Engine>(reader);
                 }
             }
@@ -335,8 +356,9 @@ int main(int argc, char *argv[])
                             dynamic_cast<const CommandSleep *>(cmd.get());
                         if (!settings.myRank && settings.verbose)
                         {
-                            std::cout << "        Sleep for "
-                                      << cmdS->sleepTime_us << " microseconds "
+                            double t = static_cast<double>(cmdS->sleepTime_us) /
+                                       1000000.0;
+                            std::cout << "    Sleep for " << t << "  seconds "
                                       << std::endl;
                         }
                         std::this_thread::sleep_for(
@@ -347,7 +369,8 @@ int main(int argc, char *argv[])
                     {
                         auto cmdW = dynamic_cast<CommandWrite *>(cmd.get());
                         auto writer = writeEngineMap[cmdW->streamName];
-                        writeADIOS(writer, cmdW, cfg, settings, step);
+                        auto io = ioMap[cmdW->groupName];
+                        writeADIOS(writer, io, cmdW, cfg, settings, step);
                         break;
                     }
                     case Operation::Read:
@@ -356,31 +379,13 @@ int main(int argc, char *argv[])
                         auto reader = readEngineMap[cmdR->streamName];
                         auto io = ioMap[cmdR->groupName];
                         readADIOS(reader, io, cmdR, cfg, settings, step);
-                        std::cout << "        Read ";
-                        if (cmdR->stepMode == adios2::StepMode::NextAvailable)
-                        {
-                            std::cout << "next available step from ";
-                        }
-                        else
-                        {
-                            std::cout << "latest step from ";
-                        }
-
-                        std::cout << cmdR->streamName << " using the group "
-                                  << cmdR->groupName;
-                        if (!cmdR->variables.empty())
-                        {
-                            std::cout << " with selected variables:  ";
-                            for (const auto &v : cmdR->variables)
-                            {
-                                std::cout << v << " ";
-                            }
-                        }
-                        std::cout << std::endl;
                         break;
                     }
                     }
-                    std::cout << std::endl;
+                    if (!settings.myRank)
+                    {
+                        std::cout << std::endl;
+                    }
                 }
             }
 
@@ -388,7 +393,7 @@ int main(int argc, char *argv[])
             for (const auto &st : streamsInOrder)
             {
                 const std::string &streamName = st.first;
-                const bool isWrite = st.second;
+                const bool isWrite = (st.second == Operation::Write);
                 if (isWrite)
                 {
                     auto writer = writeEngineMap[streamName];

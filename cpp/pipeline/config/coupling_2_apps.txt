@@ -36,7 +36,7 @@ app 1
   write   stream_T1.bp    io_T1
   sleep   0.1
     # read select variables from stream_T2 using io_T2 definition
-  read next  stream_T2.bp    io_T2   d   e
+  read next  stream_T2.bp    io_T2   3600    d   e
   sleep       1.123456789
   write   debug_T2_to_T1.bp io_T2  d  e
 

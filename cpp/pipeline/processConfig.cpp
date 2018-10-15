@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <errno.h>
+#include <float.h> // FLT_MAX
 #include <iomanip>
 #include <iostream>
 #include <iterator>
@@ -492,7 +493,7 @@ Config processConfig(const Settings &settings)
             {
                 if (currentAppId == settings.appId)
                 {
-                    size_t d = stringToDouble(words, 1, "sleep");
+                    double d = stringToDouble(words, 1, "sleep");
                     if (verbose0)
                     {
                         std::cout
@@ -596,18 +597,38 @@ Config processConfig(const Settings &settings)
                             "It must be either 'next' or 'latest'");
                     }
 
+                    double d = FLT_MAX;
+                    if (words.size() >= 4)
+                    {
+                        // next word is timeout
+                        double d = stringToDouble(words, 4, "read timeout");
+                        if (d < 0.0)
+                        {
+                            d = FLT_MAX;
+                        }
+                    }
+
                     if (verbose0)
                     {
                         std::cout << "--> Command Read mode = " << mode
                                   << "  input = " << words[2]
-                                  << "  group = " << groupName << std::endl;
+                                  << "  group = " << groupName << " timeout = ";
+                        if (d == FLT_MAX)
+                        {
+                            std::cout << "forever";
+                        }
+                        else
+                        {
+                            std::cout << d << " seconds";
+                        }
+                        std::cout << std::endl;
                     }
                     auto cmd =
                         std::make_shared<CommandRead>(words[2], words[3]);
                     cfg.commands.push_back(cmd);
 
                     // parse the optional variable list
-                    size_t widx = 4;
+                    size_t widx = 5;
                     while (words.size() > widx && !isComment(words[widx]))
                     {
                         auto vIt = grpIt->second.find(words[widx]);

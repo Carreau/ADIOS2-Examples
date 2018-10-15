@@ -47,16 +47,16 @@ app 1
 app 2
   sleep   0.1
 
-  #  read a & b from stream_T1.bp using io_T2 (!) definition
-  read  next   stream_T1.bp    io_T2   3600.0   a   b
+  #  read a & b from stream_T1.bp using io_T1 definition
+  read  next   stream_T1.bp    io_T1   3600.0   a   b
 
   sleep   2.0      
 
-  #  write only d & e from io_T2 into stream_T2.bp
+  #  write d & e from io_T2 into stream_T2.bp
   write   stream_T2.bp    io_T2   d   e
 
-  #  write only a & b from io_T2 (read in from Task 1) into debug_T1_to_T2.bp
-  io_T2   write  debug_T1_to_T2.bp io_T2  a  b
+  #  write a & b from io_T1 (read in from Task 1) into debug_T1_to_T2.bp
+  write  debug_T1_to_T2.bp io_T1  a  b
 
   sleep       1.123456789
 
