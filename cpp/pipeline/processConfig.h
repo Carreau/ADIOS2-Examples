@@ -61,7 +61,7 @@ class CommandWrite : public Command
 public:
     const std::string streamName;
     const std::string groupName;
-    std::vector<VariableInfo *> variables;
+    std::vector<std::shared_ptr<VariableInfo>> variables;
     CommandWrite(std::string stream, std::string group);
     ~CommandWrite();
 };
@@ -73,7 +73,7 @@ public:
     const std::string streamName;
     const std::string groupName;
     const float timeout_sec;
-    std::vector<VariableInfo *> variables;
+    std::vector<std::shared_ptr<VariableInfo>> variables;
     CommandRead(std::string stream, std::string group);
     ~CommandRead();
 };
@@ -82,10 +82,11 @@ struct Config
 {
     size_t nSteps = 1;
     // groupName, list of variables to preserve user defined order
-    std::map<std::string, std::vector<VariableInfo>> groupVariableListMap;
+    std::map<std::string, std::vector<std::shared_ptr<VariableInfo>>>
+        groupVariableListMap;
     // same group/variables but in an ordered map for finding
     // a particular variable
-    std::map<std::string, std::map<std::string, VariableInfo *>>
+    std::map<std::string, std::map<std::string, std::shared_ptr<VariableInfo>>>
         groupVariablesMap;
     // appID, list of commands
     std::vector<std::shared_ptr<Command>> commands;

@@ -250,9 +250,9 @@ void printConfig(const Config &cfg)
         std::cout << "    Group " << mapIt.first << ":" << std::endl;
         for (const auto &vi : mapIt.second)
         {
-            std::cout << "        " << vi.type << "  " << vi.name
-                      << DimsToString(vi.shape) << "  decomposed as "
-                      << DimsToString(vi.decomp) << std::endl;
+            std::cout << "        " << vi->type << "  " << vi->name
+                      << DimsToString(vi->shape) << "  decomposed as "
+                      << DimsToString(vi->decomp) << std::endl;
         }
         std::cout << std::endl;
     }
@@ -376,8 +376,9 @@ Config processConfig(const Settings &settings, size_t *currentConfigLineNumber)
     Config cfg;
     std::string currentGroup;
     int currentAppId = -1;
-    std::vector<VariableInfo> *currentVarList = nullptr;
-    std::map<std::string, VariableInfo *> *currentVarMap = nullptr;
+    std::vector<std::shared_ptr<VariableInfo>> *currentVarList = nullptr;
+    std::map<std::string, std::shared_ptr<VariableInfo>> *currentVarMap =
+        nullptr;
     std::vector<std::string> lines = FileToLines(configFile);
     for (auto &line : lines)
     {
@@ -432,10 +433,10 @@ Config processConfig(const Settings &settings, size_t *currentConfigLineNumber)
                               << std::endl;
                 }
                 auto it1 = cfg.groupVariableListMap.emplace(
-                    currentGroup, std::initializer_list<VariableInfo>{});
+                    currentGroup,
+                    std::initializer_list<std::shared_ptr<VariableInfo>>{});
                 currentVarList = &it1.first->second;
-                currentVarList->reserve(1000);
-                std::map<std::string, VariableInfo *> emptymap;
+                std::map<std::string, std::shared_ptr<VariableInfo>> emptymap;
                 auto it2 =
                     cfg.groupVariablesMap.emplace(currentGroup, emptymap);
                 currentVarMap = &it2.first->second;
@@ -529,9 +530,9 @@ Config processConfig(const Settings &settings, size_t *currentConfigLineNumber)
                         // group
                         // (in the user defined order; copy only a pointer)
                         auto vars = cfg.groupVariableListMap.find(groupName);
-                        for (auto &v : vars->second)
+                        for (auto v : vars->second)
                         {
-                            cmd->variables.push_back(&v);
+                            cmd->variables.push_back(v);
                         }
                     }
                 }
@@ -624,7 +625,7 @@ Config processConfig(const Settings &settings, size_t *currentConfigLineNumber)
                                       << vIt->second->name
                                       << " type = " << vIt->second->type
                                       << " varmap = "
-                                      << static_cast<void *>(vIt->second)
+                                      << static_cast<void *>(vIt->second.get())
                                       << std::endl;
                         }
                         cmd->variables.push_back(vIt->second);
@@ -637,9 +638,9 @@ Config processConfig(const Settings &settings, size_t *currentConfigLineNumber)
                         // group
                         // (in the user defined order; copy only a pointer)
                         auto vars = cfg.groupVariableListMap.find(groupName);
-                        for (auto &v : vars->second)
+                        for (auto v : vars->second)
                         {
-                            cmd->variables.push_back(&v);
+                            cmd->variables.push_back(v);
                         }
                     }
                 }
@@ -675,8 +676,10 @@ Config processConfig(const Settings &settings, size_t *currentConfigLineNumber)
                 // Allocate data array
                 ov.data.resize(ov.datasize);
 
-                currentVarList->push_back(ov);
-                currentVarMap->emplace(ov.name, &currentVarList->back());
+                std::shared_ptr<VariableInfo> ovp =
+                    std::make_shared<VariableInfo>(ov);
+                currentVarList->push_back(ovp);
+                currentVarMap->emplace(ov.name, ovp);
 
                 /* DEBUG */
                 if (verbose0)
@@ -685,7 +688,8 @@ Config processConfig(const Settings &settings, size_t *currentConfigLineNumber)
                     auto vIt = grpIt->second.find(ov.name);
                     std::cout << "       DEBUG variable = " << vIt->second->name
                               << " type = " << vIt->second->type << " varmap = "
-                              << static_cast<void *>(vIt->second) << std::endl;
+                              << static_cast<void *>(vIt->second.get())
+                              << std::endl;
                 }
                 if (settings.verbose > 2)
                 {

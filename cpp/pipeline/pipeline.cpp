@@ -13,7 +13,8 @@
 #include "processConfig.h"
 #include "settings.h"
 
-void defineADIOSArray(std::shared_ptr<adios2::IO> io, const VariableInfo *ov)
+void defineADIOSArray(std::shared_ptr<adios2::IO> io,
+                      const std::shared_ptr<VariableInfo> ov)
 {
     if (ov->type == "double")
     {
@@ -33,7 +34,7 @@ void defineADIOSArray(std::shared_ptr<adios2::IO> io, const VariableInfo *ov)
     }
 }
 
-void fillArray(VariableInfo *ov, double value)
+void fillArray(std::shared_ptr<VariableInfo> ov, double value)
 {
     if (ov->type == "double")
     {
@@ -64,7 +65,7 @@ void fillArray(VariableInfo *ov, double value)
 }
 
 void putADIOSArray(std::shared_ptr<adios2::Engine> writer,
-                   const VariableInfo *ov)
+                   const std::shared_ptr<VariableInfo> ov)
 {
     if (ov->type == "double")
     {
@@ -84,7 +85,8 @@ void putADIOSArray(std::shared_ptr<adios2::Engine> writer,
 }
 
 void getADIOSArray(std::shared_ptr<adios2::Engine> reader,
-                   std::shared_ptr<adios2::IO> io, VariableInfo *ov)
+                   std::shared_ptr<adios2::IO> io,
+                   std::shared_ptr<VariableInfo> ov)
 {
     if (ov->type == "double")
     {
