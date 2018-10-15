@@ -710,6 +710,73 @@ Config processConfig(const Settings &settings, size_t *currentConfigLineNumber)
                               << " elemsize = " << ov.elemsize << std::endl;
                 }
             }
+            else if (key == "link")
+            {
+                if (words.size() < 3)
+                {
+                    throw std::invalid_argument("Line for 'link' is invalid. "
+                                                "Need at least 2 words: "
+                                                "group <group_name> ");
+                }
+                std::string groupName = words[2];
+                auto grpIt = cfg.groupVariablesMap.find(groupName);
+                if (grpIt == cfg.groupVariablesMap.end())
+                {
+                    throw std::invalid_argument(
+                        "Group '" + groupName +
+                        "' used in 'link' command is undefined. ");
+                }
+
+                if (verbose0)
+                {
+                    std::cout << "--> Link variables from group = " << groupName
+                              << ": ";
+                }
+
+                // parse the optional variable list
+                size_t widx = 3;
+                if (words.size() > widx && !isComment(words[widx]))
+                {
+                    while (words.size() > widx && !isComment(words[widx]))
+                    {
+                        auto vIt = grpIt->second.find(words[widx]);
+                        if (vIt == grpIt->second.end())
+                        {
+                            throw std::invalid_argument(
+                                "Group '" + groupName + "' used in 'link' "
+                                                        "command has no "
+                                                        "variable '" +
+                                words[widx] + "' defined.");
+                        }
+                        if (verbose0)
+                        {
+                            std::cout << " " << vIt->second->name;
+                        }
+                        currentVarList->push_back(vIt->second);
+                        currentVarMap->emplace(vIt->second->name, vIt->second);
+                        ++widx;
+                    }
+                }
+                else
+                {
+                    // no variable list, so we link ALL variables in the
+                    // group (in the user defined order)
+                    if (verbose0)
+                    {
+                        std::cout << "all variables";
+                    }
+                    auto vars = cfg.groupVariableListMap.find(groupName);
+                    for (auto v : vars->second)
+                    {
+                        currentVarList->push_back(v);
+                        currentVarMap->emplace(v->name, v);
+                    }
+                }
+                if (verbose0)
+                {
+                    std::cout << std::endl;
+                }
+            }
             else
             {
                 throw std::invalid_argument("Unrecognized keyword '" + key +

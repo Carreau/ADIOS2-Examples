@@ -202,19 +202,32 @@ void writeADIOS(std::shared_ptr<adios2::Engine> writer,
     double myValue = static_cast<double>(settings.myRank) +
                      static_cast<double>(step - 1) / div;
 
+    std::map<std::string, adios2::Params> definedVars =
+        io->AvailableVariables();
     for (auto ov : cmdW->variables)
     {
+        // if the variable is not in the IO group it means
+        // we have not defined it yet (e.g. a write-only variable or a linked
+        // variable defined in another read group)
+        const auto it = definedVars.find(ov->name);
+        if (it == definedVars.end())
+        {
+            if (!settings.myRank && settings.verbose)
+            {
+                std::cout << "        Define array  " << ov->name
+                          << "  for output" << std::endl;
+            }
+            defineADIOSArray(io, ov);
+        }
+
+        // if we read the variable, use the read values otherwise generate data
+        // now
         if (!ov->readFromInput)
         {
             if (!settings.myRank && settings.verbose)
             {
-                std::cout << "        Define and Fill array  " << ov->name
+                std::cout << "        Fill array  " << ov->name
                           << "  for output" << std::endl;
-            }
-
-            if (step == 1)
-            {
-                defineADIOSArray(io, ov);
             }
             fillArray(ov, myValue);
         }

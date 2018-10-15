@@ -21,7 +21,7 @@ group  io_T2_in
 
 group  io_T2_out
   # use all variables read into io_T2_in in the output 
-  link group io_T2_out
+  link group io_T2_in
 
 # Task 1 actions
 app 1
