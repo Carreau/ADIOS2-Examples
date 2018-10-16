@@ -42,7 +42,7 @@ app 1
 
 ## Task 2 actions
 app 2
-  steps   3
+  steps   over stream_T1.bp
   sleep   0.1
   #  read a & b from stream_T1.bp using io_T1 definition
   read next   stream_T1.bp    io_T1   -1   a   b

@@ -81,6 +81,7 @@ public:
 struct Config
 {
     size_t nSteps = 1;
+    std::string stepOverStream;
     // groupName, list of variables to preserve user defined order
     std::map<std::string, std::vector<std::shared_ptr<VariableInfo>>>
         groupVariableListMap;

@@ -43,16 +43,17 @@ app 1
 
 ## Task 2 actions
 app 2
+  steps   over stream_T1.bp
   sleep   0.1
 
   #  read a & b from stream_T1.bp using io_T1 definition
   read  next   stream_T1.bp    io_T1   -1   a   b
 
-  sleep   2.0      
+  sleep   2.0 
 
   #  write d & e from io_T2 into stream_T2.bp
   write   stream_T2.bp    io_T2   d   e
 
-  sleep       1.123456789
+  sleep   1.123456789
 
 

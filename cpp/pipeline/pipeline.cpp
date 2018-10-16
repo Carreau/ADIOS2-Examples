@@ -128,9 +128,9 @@ void getADIOSArray(std::shared_ptr<adios2::Engine> reader, adios2::IO &io,
 }
 
 /* return true if read-in completed */
-bool readADIOS(std::shared_ptr<adios2::Engine> reader, adios2::IO &io,
-               CommandRead *cmdR, Config &cfg, const Settings &settings,
-               size_t step)
+adios2::StepStatus readADIOS(std::shared_ptr<adios2::Engine> reader,
+                             adios2::IO &io, CommandRead *cmdR, Config &cfg,
+                             const Settings &settings, size_t step)
 {
     if (!settings.myRank && settings.verbose)
     {
@@ -155,11 +155,11 @@ bool readADIOS(std::shared_ptr<adios2::Engine> reader, adios2::IO &io,
         }
         std::cout << std::endl;
     }
-    enum adios2::StepStatus status =
+    adios2::StepStatus status =
         reader->BeginStep(cmdR->stepMode, cmdR->timeout_sec);
     if (status != adios2::StepStatus::OK)
     {
-        return false;
+        return status;
     }
 
     if (!settings.myRank && settings.verbose && step == 1)
@@ -182,7 +182,7 @@ bool readADIOS(std::shared_ptr<adios2::Engine> reader, adios2::IO &io,
         getADIOSArray(reader, io, ov);
     }
     reader->EndStep();
-    return true;
+    return status;
 }
 
 void writeADIOS(std::shared_ptr<adios2::Engine> writer, adios2::IO &io,
@@ -367,7 +367,9 @@ int main(int argc, char *argv[])
             }
 
             /* Execute commands */
-            for (size_t step = 1; step <= cfg.nSteps; ++step)
+            bool exitLoop = false;
+            size_t step = 1;
+            while (!exitLoop)
             {
                 if (!settings.myRank)
                 {
@@ -417,9 +419,34 @@ int main(int argc, char *argv[])
                         auto cmdR = dynamic_cast<CommandRead *>(cmd.get());
                         auto reader = readEngineMap[cmdR->streamName];
                         auto io = ioMap[cmdR->groupName];
-                        const bool succ =
+                        adios2::StepStatus status =
                             readADIOS(reader, io, cmdR, cfg, settings, step);
-                        cfg.condMap[cmdR->streamName] = succ;
+                        switch (status)
+                        {
+                        case adios2::StepStatus::OK:
+                            cfg.condMap[cmdR->streamName] = true;
+                            break;
+                        case adios2::StepStatus::NotReady:
+                            cfg.condMap[cmdR->streamName] = false;
+                            if (!settings.myRank && settings.verbose)
+                            {
+                                std::cout
+                                    << "    Nonblocking read status: Not Ready "
+                                    << std::endl;
+                            }
+                            break;
+                        case adios2::StepStatus::EndOfStream:
+                        case adios2::StepStatus::OtherError:
+                            cfg.condMap[cmdR->streamName] = false;
+                            exitLoop = true;
+                            if (!settings.myRank && settings.verbose)
+                            {
+                                std::cout << "    Nonblocking read status: "
+                                             "Terminated "
+                                          << std::endl;
+                            }
+                            break;
+                        }
                         break;
                     }
                     }
@@ -428,6 +455,11 @@ int main(int argc, char *argv[])
                         std::cout << std::endl;
                     }
                 }
+                if (cfg.nSteps && step >= cfg.nSteps)
+                {
+                    exitLoop = true;
+                }
+                ++step;
             }
 
             /* Close all streams in order of opening */

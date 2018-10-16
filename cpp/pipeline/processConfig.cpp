@@ -105,6 +105,22 @@ double stringToDouble(std::vector<std::string> &words, int pos,
     return d;
 }
 
+void processSteps(std::vector<std::string> &words, Config &cfg)
+{
+    if (words.size() >= 3)
+    {
+        std::string w(words[1]);
+        std::transform(w.begin(), w.end(), w.begin(), ::tolower);
+        if (w == "over" && !isComment(words[2]))
+        {
+            cfg.nSteps = 0;
+            cfg.stepOverStream = words[2];
+            return;
+        }
+    }
+    cfg.nSteps = stringToSizet(words, 1, "steps");
+}
+
 void PrintDims(const adios2::Dims &dims) noexcept
 {
     std::cout << "{";
@@ -454,18 +470,37 @@ Config processConfig(const Settings &settings, size_t *currentConfigLineNumber)
                 currentAppId = static_cast<int>(stringToSizet(words, 1, "app"));
                 if (verbose0)
                 {
-                    std::cout
-                        << "--> Application ID is set to: " << currentAppId
-                        << std::endl;
+                    std::cout << "--> Application ID is set to: "
+                              << currentAppId;
+                    if (currentAppId != settings.appId)
+                    {
+                        std::cout << "  Ignore commands set for this ID"
+                                  << std::endl;
+                    }
+                    else
+                    {
+                        std::cout << "  This is our app" << std::endl;
+                    }
                 }
             }
             else if (key == "steps")
             {
-                cfg.nSteps = stringToSizet(words, 1, "steps");
-                if (verbose0)
+                if (currentAppId == settings.appId)
                 {
-                    std::cout << "--> Steps is set to: " << cfg.nSteps
-                              << std::endl;
+                    processSteps(words, cfg);
+                    if (verbose0)
+                    {
+                        if (cfg.nSteps)
+                        {
+                            std::cout << "--> Steps is set to: " << cfg.nSteps
+                                      << std::endl;
+                        }
+                        else
+                        {
+                            std::cout << "--> Steps over stream: "
+                                      << cfg.stepOverStream << std::endl;
+                        }
+                    }
                 }
             }
             else if (key == "sleep")
