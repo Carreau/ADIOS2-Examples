@@ -423,7 +423,7 @@ int main(int argc, char *argv[])
                         break;
                     }
                     }
-                    if (!settings.myRank)
+                    if (!settings.myRank && settings.verbose)
                     {
                         std::cout << std::endl;
                     }

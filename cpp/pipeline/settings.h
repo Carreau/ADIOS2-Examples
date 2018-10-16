@@ -26,6 +26,7 @@ public:
     std::string adiosConfigFileName;
     unsigned int verbose = 0;
     size_t appId = 0;
+    bool isStrongScaling = true; // strong or weak scaling
     //   process decomposition
     std::vector<size_t> processDecomp = {1, 1, 1, 1, 1, 1, 1, 1,
                                          1, 1, 1, 1, 1, 1, 1, 1};

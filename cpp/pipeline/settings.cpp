@@ -20,9 +20,11 @@ struct option options[] = {{"help", no_argument, NULL, 'h'},
                            {"config", required_argument, NULL, 'c'},
                            {"decomp", required_argument, NULL, 'd'},
                            {"xml", required_argument, NULL, 'x'},
+                           {"strong-scaling", no_argument, NULL, 's'},
+                           {"weak-scaling", no_argument, NULL, 'w'},
                            {NULL, 0, NULL, 0}};
 
-static const char *optstring = "-hva:c:d:x:";
+static const char *optstring = "-hvswa:c:d:x:";
 
 size_t Settings::ndigits(size_t n) const
 {
@@ -34,13 +36,16 @@ size_t Settings::ndigits(size_t n) const
 void Settings::displayHelp()
 {
     std::cout
-        << "Usage: pipeline -a appid -c config  -d d1 [d2 .. dN] [-x file]\n"
+        << "Usage: pipeline -a appid -c config {-s | -w} -d d1 [d2 .. dN] [-x "
+           "file]\n"
         << "  -a appID:  unique number for each pipeline application\n"
         << "  -c config: data specification config file\n"
         << "  -d ...     define process decomposition:\n"
         << "      d1:        number of processes in 1st (slowest) dimension\n"
         << "      dN:        number of processes in Nth dimension\n"
         << "                 d1*d2*..*dN must equal the number of processes\n"
+        << "  -s OR -w:  strong or weak scaling. \n"
+        << "             Dimensions in config are treated accordingly\n"
         << "  -x file    ADIOS configuration XML file\n"
         << "  -v         increase verbosity\n"
         << "  -h         display this help\n\n";
@@ -62,6 +67,7 @@ size_t Settings::stringToNumber(const std::string &varName,
 int Settings::processArgs(int argc, char *argv[])
 {
     bool appIdDefined = false;
+    bool scalingDefined = false;
     int c;
     int last_c = '_';
 
@@ -93,6 +99,24 @@ int Settings::processArgs(int argc, char *argv[])
             break;
         case 'v':
             ++verbose;
+            break;
+        case 's':
+            if (scalingDefined && !isStrongScaling)
+            {
+                throw std::invalid_argument(
+                    "Cannot have -w and -s used at the same time ");
+            }
+            isStrongScaling = true;
+            scalingDefined = true;
+            break;
+        case 'w':
+            if (scalingDefined && isStrongScaling)
+            {
+                throw std::invalid_argument(
+                    "Cannot have -s and -w used at the same time ");
+            }
+            isStrongScaling = false;
+            scalingDefined = true;
             break;
         case 1:
             /* This means a field is unknown, or could be multiple arg or bad
@@ -143,6 +167,12 @@ int Settings::processArgs(int argc, char *argv[])
     {
         throw std::invalid_argument(
             "Missing argument for config file (see -c option)");
+    }
+    if (!scalingDefined)
+    {
+        throw std::invalid_argument("Missing argument for scaling, "
+                                    "which must be set to Strong or Weak "
+                                    "(see -s, -w options)");
     }
 
     return 0;

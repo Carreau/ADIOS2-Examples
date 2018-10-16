@@ -215,8 +215,16 @@ VariableInfo processArray(std::vector<std::string> &words,
 
     for (size_t i = 0; i < ov.ndim; i++)
     {
-        ov.shape.push_back(
-            stringToSizet(words, 4 + i, "dimension " + std::to_string(i + 1)));
+        if (settings.isStrongScaling)
+        {
+            ov.shape.push_back(stringToSizet(
+                words, 4 + i, "dimension " + std::to_string(i + 1)));
+        }
+        else
+        {
+            ov.count.push_back(stringToSizet(
+                words, 4 + i, "dimension " + std::to_string(i + 1)));
+        }
     }
 
     size_t nprocDecomp = 1;
@@ -650,27 +658,42 @@ Config processConfig(const Settings &settings, size_t *currentConfigLineNumber)
                 // process config line and get global array info
                 VariableInfo ov = processArray(words, settings);
                 ov.datasize = ov.elemsize;
-                size_t pos[ov.ndim]; // Position of rank in 5D space
+                size_t pos[ov.ndim]; // Position of rank in N-dim space
 
-                // Calculate rank's position in ndim-space
+                // Calculate rank's position in N-dim space
                 decompRowMajor(ov.ndim, settings.myRank, ov.decomp.data(), pos);
 
-                // Calculate the local size and offsets based on the
-                // definition
-                for (size_t i = 0; i < ov.ndim; ++i)
+                if (settings.isStrongScaling)
                 {
-                    size_t count = ov.shape[i] / ov.decomp[i];
-                    size_t offs = count * pos[i];
-                    if (pos[i] == ov.decomp[i] - 1 && pos[i] != 0)
+                    // Calculate the local size and offsets based on the
+                    // definition
+                    for (size_t i = 0; i < ov.ndim; ++i)
                     {
-                        // last process in dim(i) need to write all the rest
-                        // of
-                        // dimension
-                        count = ov.shape[i] - offs;
+                        size_t count = ov.shape[i] / ov.decomp[i];
+                        size_t offs = count * pos[i];
+                        if (pos[i] == ov.decomp[i] - 1 && pos[i] != 0)
+                        {
+                            // last process in dim(i) need to write all the rest
+                            // of dimension
+                            count = ov.shape[i] - offs;
+                        }
+                        ov.start.push_back(offs);
+                        ov.count.push_back(count);
+                        ov.datasize *= count;
                     }
-                    ov.start.push_back(offs);
-                    ov.count.push_back(count);
-                    ov.datasize *= count;
+                }
+                else
+                {
+                    // Calculate the local size and offsets based on the
+                    // definition
+                    for (size_t i = 0; i < ov.ndim; ++i)
+                    {
+                        size_t shape = ov.count[i] * ov.decomp[i];
+                        size_t offs = ov.count[i] * pos[i];
+                        ov.start.push_back(offs);
+                        ov.shape.push_back(shape);
+                        ov.datasize *= ov.count[i];
+                    }
                 }
 
                 // Allocate data array
