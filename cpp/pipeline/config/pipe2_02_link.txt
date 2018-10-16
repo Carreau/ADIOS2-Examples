@@ -9,13 +9,13 @@
 
 
 group  io_T1
-  # item  type    varname     N   [gdim1 gdim2 ... gdimN  decomp1 decomp2 ... decompN]
+  # item  type    varname     N   [dim1 dim2 ... dimN  decomp1 decomp2 ... decompN]
   array   double  a           2    100   200              X       YZ
   array   float   b           1    100                    XYZ 
   array   float   c           3    100   200   300        XY      z     1
 
 group  io_T2_in
-  # item  type    varname     N   [gdim1 gdim2 ... gdimN  decomp1 decomp2 ... decompN]
+  # item  type    varname     N   [dim1 dim2 ... dimN  decomp1 decomp2 ... decompN]
   array   double  a           2    100   200              XY      Z
   array   float   b           1    100                    XYZ 
 
