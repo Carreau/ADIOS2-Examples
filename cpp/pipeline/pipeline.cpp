@@ -13,23 +13,22 @@
 #include "processConfig.h"
 #include "settings.h"
 
-void defineADIOSArray(std::shared_ptr<adios2::IO> io,
-                      const std::shared_ptr<VariableInfo> ov)
+void defineADIOSArray(adios2::IO &io, const std::shared_ptr<VariableInfo> ov)
 {
     if (ov->type == "double")
     {
-        adios2::Variable<double> v = io->DefineVariable<double>(
+        adios2::Variable<double> v = io.DefineVariable<double>(
             ov->name, ov->shape, ov->start, ov->count, true);
         // v = io->InquireVariable<double>(ov->name);
     }
     else if (ov->type == "float")
     {
-        adios2::Variable<float> v = io->DefineVariable<float>(
+        adios2::Variable<float> v = io.DefineVariable<float>(
             ov->name, ov->shape, ov->start, ov->count, true);
     }
     else if (ov->type == "int")
     {
-        adios2::Variable<int> v = io->DefineVariable<int>(
+        adios2::Variable<int> v = io.DefineVariable<int>(
             ov->name, ov->shape, ov->start, ov->count, true);
     }
 }
@@ -84,13 +83,12 @@ void putADIOSArray(std::shared_ptr<adios2::Engine> writer,
     }
 }
 
-void getADIOSArray(std::shared_ptr<adios2::Engine> reader,
-                   std::shared_ptr<adios2::IO> io,
+void getADIOSArray(std::shared_ptr<adios2::Engine> reader, adios2::IO &io,
                    std::shared_ptr<VariableInfo> ov)
 {
     if (ov->type == "double")
     {
-        adios2::Variable<double> v = io->InquireVariable<double>(ov->name);
+        adios2::Variable<double> v = io.InquireVariable<double>(ov->name);
         if (!v)
         {
             ov->readFromInput = false;
@@ -103,7 +101,7 @@ void getADIOSArray(std::shared_ptr<adios2::Engine> reader,
     }
     else if (ov->type == "float")
     {
-        adios2::Variable<float> v = io->InquireVariable<float>(ov->name);
+        adios2::Variable<float> v = io.InquireVariable<float>(ov->name);
         if (!v)
         {
             ov->readFromInput = false;
@@ -116,7 +114,7 @@ void getADIOSArray(std::shared_ptr<adios2::Engine> reader,
     }
     else if (ov->type == "int")
     {
-        adios2::Variable<int> v = io->InquireVariable<int>(ov->name);
+        adios2::Variable<int> v = io.InquireVariable<int>(ov->name);
         if (!v)
         {
             ov->readFromInput = false;
@@ -130,9 +128,9 @@ void getADIOSArray(std::shared_ptr<adios2::Engine> reader,
 }
 
 /* return true if read-in completed */
-bool readADIOS(std::shared_ptr<adios2::Engine> reader,
-               std::shared_ptr<adios2::IO> io, CommandRead *cmdR, Config &cfg,
-               const Settings &settings, size_t step)
+bool readADIOS(std::shared_ptr<adios2::Engine> reader, adios2::IO &io,
+               CommandRead *cmdR, Config &cfg, const Settings &settings,
+               size_t step)
 {
     if (!settings.myRank && settings.verbose)
     {
@@ -166,7 +164,7 @@ bool readADIOS(std::shared_ptr<adios2::Engine> reader,
 
     if (!settings.myRank && settings.verbose && step == 1)
     {
-        const auto varmap = io->AvailableVariables();
+        const auto varmap = io.AvailableVariables();
         std::cout << "    Variables in input for reading: " << std::endl;
         for (const auto &v : varmap)
         {
@@ -187,9 +185,9 @@ bool readADIOS(std::shared_ptr<adios2::Engine> reader,
     return true;
 }
 
-void writeADIOS(std::shared_ptr<adios2::Engine> writer,
-                std::shared_ptr<adios2::IO> io, CommandWrite *cmdW, Config &cfg,
-                const Settings &settings, size_t step)
+void writeADIOS(std::shared_ptr<adios2::Engine> writer, adios2::IO &io,
+                CommandWrite *cmdW, Config &cfg, const Settings &settings,
+                size_t step)
 {
     if (!settings.myRank && settings.verbose)
     {
@@ -202,8 +200,7 @@ void writeADIOS(std::shared_ptr<adios2::Engine> writer,
     double myValue = static_cast<double>(settings.myRank) +
                      static_cast<double>(step - 1) / div;
 
-    std::map<std::string, adios2::Params> definedVars =
-        io->AvailableVariables();
+    std::map<std::string, adios2::Params> definedVars = io.AvailableVariables();
     for (auto ov : cmdW->variables)
     {
         // if the variable is not in the IO group it means
@@ -328,12 +325,7 @@ int main(int argc, char *argv[])
                 }
             }
 
-            std::map<std::string, std::shared_ptr<adios2::IO>> ioMap;
-            /*for (const auto &groupIt : cfg.groupVariablesMap)
-            {
-                auto io = std::make_shared<adios2::IO>(groupIt.first);
-                ioMap[groupIt.first] = io;
-            }*/
+            std::map<std::string, adios2::IO> ioMap;
 
             /* 2. Declare/define groups and open streams in the order they
              * appear */
@@ -345,13 +337,12 @@ int main(int argc, char *argv[])
             for (const auto &st : streamsInOrder)
             {
                 const std::string &streamName = st.first;
-                std::shared_ptr<adios2::IO> io;
+                adios2::IO io;
                 auto &groupName = groupMap[streamName];
                 auto it = ioMap.find(groupName);
                 if (it == ioMap.end())
                 {
-                    io = std::make_shared<adios2::IO>(
-                        adios.DeclareIO(groupName));
+                    io = adios.DeclareIO(groupName);
                     ioMap[groupName] = io;
                 }
                 else
@@ -361,14 +352,14 @@ int main(int argc, char *argv[])
                 const bool isWrite = (st.second == Operation::Write);
                 if (isWrite)
                 {
-                    adios2::Engine writer = io->Open(
+                    adios2::Engine writer = io.Open(
                         streamName, adios2::Mode::Write, settings.appComm);
                     writeEngineMap[streamName] =
                         std::make_shared<adios2::Engine>(writer);
                 }
                 else /* Read */
                 {
-                    adios2::Engine reader = io->Open(
+                    adios2::Engine reader = io.Open(
                         streamName, adios2::Mode::Read, settings.appComm);
                     readEngineMap[streamName] =
                         std::make_shared<adios2::Engine>(reader);
