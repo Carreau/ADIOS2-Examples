@@ -114,7 +114,14 @@ void processSteps(std::vector<std::string> &words, Config &cfg)
         if (w == "over" && !isComment(words[2]))
         {
             cfg.nSteps = 0;
-            cfg.stepOverStream = words[2];
+            for (int i = 2; words.size() > i; ++i)
+            {
+                if (isComment(words[i]))
+                {
+                    break;
+                }
+                cfg.stepOverStreams[words[i]] = true;
+            }
             return;
         }
     }
@@ -369,14 +376,27 @@ void globalChecks(const Config &cfg, const Settings &settings)
         {
             try
             {
-                const bool f = cfg.condMap.at(cmd->conditionalStream);
+                const auto f = cfg.condMap.at(cmd->conditionalStream);
             }
             catch (std::exception &e)
             {
-                throw std::invalid_argument("Name used in conditional '" +
-                                            cmd->conditionalStream +
-                                            "' is not a read stream");
+                throw std::invalid_argument(
+                    "Name used in conditional is not a read stream: '" +
+                    cmd->conditionalStream + "'");
             }
+        }
+    }
+    for (const auto &it : cfg.stepOverStreams)
+    {
+        try
+        {
+            const auto f = cfg.condMap.at(it.first);
+        }
+        catch (std::exception &e)
+        {
+            throw std::invalid_argument(
+                "Name used in step over command is not a read stream: '" +
+                it.first + "' ");
         }
     }
 }
@@ -497,8 +517,12 @@ Config processConfig(const Settings &settings, size_t *currentConfigLineNumber)
                         }
                         else
                         {
-                            std::cout << "--> Steps over stream: "
-                                      << cfg.stepOverStream << std::endl;
+                            std::cout << "--> Steps over streams: ";
+                            for (const auto &it : cfg.stepOverStreams)
+                            {
+                                std::cout << it.first << "  ";
+                            }
+                            std::cout << std::endl;
                         }
                     }
                 }
@@ -645,7 +669,7 @@ Config processConfig(const Settings &settings, size_t *currentConfigLineNumber)
                         std::make_shared<CommandRead>(streamName, groupName);
                     cmd->conditionalStream = conditionalStream;
                     cfg.commands.push_back(cmd);
-                    cfg.condMap[streamName] = true;
+                    cfg.condMap[streamName] = adios2::StepStatus::OK;
 
                     // parse the optional variable list
                     size_t widx = 5;

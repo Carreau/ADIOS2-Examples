@@ -81,7 +81,8 @@ public:
 struct Config
 {
     size_t nSteps = 1;
-    std::string stepOverStream;
+    // list of input streams that we loop over instead of nSteps
+    std::map<std::string, bool> stepOverStreams;
     // groupName, list of variables to preserve user defined order
     std::map<std::string, std::vector<std::shared_ptr<VariableInfo>>>
         groupVariableListMap;
@@ -92,7 +93,7 @@ struct Config
     // appID, list of commands
     std::vector<std::shared_ptr<Command>> commands;
     // Read streams status flag for supporting conditionals
-    std::map<std::string, bool> condMap; // stream name
+    std::map<std::string, adios2::StepStatus> condMap; // stream name
 };
 
 const std::vector<std::pair<std::string, size_t>> supportedTypes = {

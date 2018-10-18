@@ -192,7 +192,16 @@ void writeADIOS(std::shared_ptr<adios2::Engine> writer, adios2::IO &io,
     if (!settings.myRank && settings.verbose)
     {
         std::cout << "    Write to output " << cmdW->streamName << " the group "
-                  << cmdW->groupName << std::endl;
+                  << cmdW->groupName;
+        if (!cmdW->variables.empty())
+        {
+            std::cout << " with selected variables:  ";
+            for (const auto &v : cmdW->variables)
+            {
+                std::cout << v->name << " ";
+            }
+        }
+        std::cout << std::endl;
     }
 
     const double div =
@@ -352,17 +361,25 @@ int main(int argc, char *argv[])
                 const bool isWrite = (st.second == Operation::Write);
                 if (isWrite)
                 {
-                    adios2::Engine writer = io.Open(
-                        streamName, adios2::Mode::Write, settings.appComm);
-                    writeEngineMap[streamName] =
-                        std::make_shared<adios2::Engine>(writer);
+                    auto it = writeEngineMap.find(streamName);
+                    if (it == writeEngineMap.end())
+                    {
+                        adios2::Engine writer = io.Open(
+                            streamName, adios2::Mode::Write, settings.appComm);
+                        writeEngineMap[streamName] =
+                            std::make_shared<adios2::Engine>(writer);
+                    }
                 }
                 else /* Read */
                 {
-                    adios2::Engine reader = io.Open(
-                        streamName, adios2::Mode::Read, settings.appComm);
-                    readEngineMap[streamName] =
-                        std::make_shared<adios2::Engine>(reader);
+                    auto it = readEngineMap.find(streamName);
+                    if (it == readEngineMap.end())
+                    {
+                        adios2::Engine reader = io.Open(
+                            streamName, adios2::Mode::Read, settings.appComm);
+                        readEngineMap[streamName] =
+                            std::make_shared<adios2::Engine>(reader);
+                    }
                 }
             }
 
@@ -378,7 +395,8 @@ int main(int argc, char *argv[])
                 for (const auto cmd : cfg.commands)
                 {
                     if (!cmd->conditionalStream.empty() &&
-                        !cfg.condMap.at(cmd->conditionalStream))
+                        cfg.condMap.at(cmd->conditionalStream) !=
+                            adios2::StepStatus::OK)
                     {
                         if (!settings.myRank && settings.verbose)
                         {
@@ -417,35 +435,38 @@ int main(int argc, char *argv[])
                     case Operation::Read:
                     {
                         auto cmdR = dynamic_cast<CommandRead *>(cmd.get());
-                        auto reader = readEngineMap[cmdR->streamName];
-                        auto io = ioMap[cmdR->groupName];
-                        adios2::StepStatus status =
-                            readADIOS(reader, io, cmdR, cfg, settings, step);
-                        switch (status)
+                        auto statusIt = cfg.condMap.find(cmdR->streamName);
+                        if (statusIt->second == adios2::StepStatus::OK ||
+                            statusIt->second == adios2::StepStatus::NotReady)
                         {
-                        case adios2::StepStatus::OK:
-                            cfg.condMap[cmdR->streamName] = true;
-                            break;
-                        case adios2::StepStatus::NotReady:
-                            cfg.condMap[cmdR->streamName] = false;
-                            if (!settings.myRank && settings.verbose)
+                            auto reader = readEngineMap[cmdR->streamName];
+                            auto io = ioMap[cmdR->groupName];
+                            adios2::StepStatus status = readADIOS(
+                                reader, io, cmdR, cfg, settings, step);
+                            statusIt->second = status;
+                            switch (status)
                             {
-                                std::cout
-                                    << "    Nonblocking read status: Not Ready "
-                                    << std::endl;
+                            case adios2::StepStatus::OK:
+                                break;
+                            case adios2::StepStatus::NotReady:
+                                if (!settings.myRank && settings.verbose)
+                                {
+                                    std::cout << "    Nonblocking read status: "
+                                                 "Not Ready "
+                                              << std::endl;
+                                }
+                                break;
+                            case adios2::StepStatus::EndOfStream:
+                            case adios2::StepStatus::OtherError:
+                                cfg.stepOverStreams.erase(cmdR->streamName);
+                                if (!settings.myRank && settings.verbose)
+                                {
+                                    std::cout << "    Nonblocking read status: "
+                                                 "Terminated "
+                                              << std::endl;
+                                }
+                                break;
                             }
-                            break;
-                        case adios2::StepStatus::EndOfStream:
-                        case adios2::StepStatus::OtherError:
-                            cfg.condMap[cmdR->streamName] = false;
-                            exitLoop = true;
-                            if (!settings.myRank && settings.verbose)
-                            {
-                                std::cout << "    Nonblocking read status: "
-                                             "Terminated "
-                                          << std::endl;
-                            }
-                            break;
                         }
                         break;
                     }
@@ -455,7 +476,7 @@ int main(int argc, char *argv[])
                         std::cout << std::endl;
                     }
                 }
-                if (cfg.nSteps && step >= cfg.nSteps)
+                if (!cfg.stepOverStreams.size() && step >= cfg.nSteps)
                 {
                     exitLoop = true;
                 }
@@ -469,13 +490,23 @@ int main(int argc, char *argv[])
                 const bool isWrite = (st.second == Operation::Write);
                 if (isWrite)
                 {
-                    auto writer = writeEngineMap[streamName];
-                    writer->Close();
+                    auto writerIt = writeEngineMap.find(streamName);
+                    if (writerIt != writeEngineMap.end())
+                    {
+                        auto writer = writeEngineMap[streamName];
+                        writerIt->second->Close();
+                        writeEngineMap.erase(writerIt);
+                    }
                 }
                 else /* Read */
                 {
-                    auto reader = readEngineMap[streamName];
-                    reader->Close();
+                    auto readerIt = readEngineMap.find(streamName);
+                    if (readerIt != readEngineMap.end())
+                    {
+                        auto reader = readEngineMap[streamName];
+                        readerIt->second->Close();
+                        readEngineMap.erase(readerIt);
+                    }
                 }
             }
         }
