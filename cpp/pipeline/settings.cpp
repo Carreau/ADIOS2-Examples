@@ -141,7 +141,10 @@ int Settings::processArgs(int argc, char *argv[])
                                         std::string(optarg));
             break;
         } /* end switch */
-        last_c = c;
+        if (c != 1)
+        {
+            last_c = c;
+        }
     } /* end while */
 
     /* Check if we have extra unprocessed arguments */
